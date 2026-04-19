@@ -1,0 +1,16 @@
+services:
+  db:
+    image: postgres:15
+    container_name: remedio-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: remedio
+    ports:
+      - "5432:5432"
+    volumes:
+      - remedio-data:/var/lib/postgresql/data
+
+volumes:
+  remedio-data:

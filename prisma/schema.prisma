@@ -1,0 +1,336 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  MANAGER
+  DEPENDENT
+}
+
+enum MedicationCategory {
+  CONTINUOUS
+  OCCASIONAL
+  CONTROLLED
+}
+
+enum MedicationForm {
+  COMPRIMIDO
+  CAPSULA
+  LIQUIDO
+  COTIRIO
+  INJETAVEL
+  POMADA
+  OUTRO
+}
+
+enum StockConfidenceLevel {
+  HIGH
+  MEDIUM
+  LOW
+  UNKNOWN
+}
+
+enum StockReferenceType {
+  PURCHASE
+  MANUAL_ADJUSTMENT
+  CONFIRMATION
+}
+
+enum QualitativeStatus {
+  OK
+  LOW
+  CRITICAL
+}
+
+enum PurchaseStatus {
+  PLANNED
+  COMPLETED
+  CANCELLED
+}
+
+enum QuotationStatus {
+  DRAFT
+  COMPLETED
+}
+
+enum AlertType {
+  CRITICAL
+  LOW_STOCK
+  PLAN
+  NO_CONFIRMATION
+  DIVERGENCE
+  PRICE_HIGH
+}
+
+enum PriceSource {
+  PURCHASE
+  QUOTATION
+}
+
+enum AttachmentEntity {
+  PURCHASE
+  MEDICATION
+  QUOTATION
+}
+
+// ─────────────────────────────────────────────
+// Usuário e Perfil
+// ─────────────────────────────────────────────
+
+model User {
+  id         String   @id @default(cuid())
+  email      String   @unique
+  name       String
+  role       Role
+  password   String
+  avatarUrl  String?
+  createdAt  DateTime @default(now())
+
+  profile               Profile?
+  stockConfirmations    StockConfirmation[]
+  purchasesCreated      Purchase[]
+  quotationsCreated     Quotation[]
+  stockAdjustments      Stock[]             @relation("StockAdjustedBy")
+}
+
+model Profile {
+  id                  String  @id @default(uuid())
+  userId              String  @unique
+  simplifiedMode      Boolean @default(false)
+  notificationEnabled Boolean @default(true)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// ─────────────────────────────────────────────
+// Farmácia
+// ─────────────────────────────────────────────
+
+model Pharmacy {
+  id                String  @id @default(uuid())
+  name              String  @unique
+  baseUrl           String
+  searchUrlTemplate String
+  logoUrl           String?
+  priority          Int     @default(99)
+  isActive          Boolean @default(true)
+  notes             String?
+
+  quotationItems QuotationItem[]
+  purchaseItems  PurchaseItem[]
+  priceHistory   PriceHistory[]
+}
+
+// ─────────────────────────────────────────────
+// Medicamento
+// ─────────────────────────────────────────────
+
+model Medication {
+  id                   String             @id @default(uuid())
+  name                 String
+  activeIngredient     String?
+  category             MedicationCategory @default(CONTINUOUS)
+  requiresPrescription Boolean            @default(false)
+  notes                String?
+  isActive             Boolean            @default(true)
+  createdAt            DateTime           @default(now())
+
+  presentations MedicationPresentation[]
+}
+
+model MedicationPresentation {
+  id                 String         @id @default(uuid())
+  medicationId       String
+  brand              String?
+  dosage             String
+  form               MedicationForm @default(COMPRIMIDO)
+  unitsPerPackage    Int
+  packageDescription String?
+  isPreferred        Boolean        @default(false)
+
+  medication       Medication        @relation(fields: [medicationId], references: [id], onDelete: Cascade)
+  consumptionRules ConsumptionRule[]
+  stock            Stock?
+  quotationItems   QuotationItem[]
+  purchaseItems    PurchaseItem[]
+  priceHistory     PriceHistory[]
+  alerts           Alert[]
+}
+
+model ConsumptionRule {
+  id             String   @id @default(uuid())
+  presentationId String
+  unitsPerDose   Decimal  @db.Decimal(6, 2)
+  dosesPerDay    Decimal  @db.Decimal(6, 2)
+  daysOfWeek     Int[]
+  validFrom      DateTime @default(now())
+  validUntil     DateTime?
+  notes          String?
+
+  presentation MedicationPresentation @relation(fields: [presentationId], references: [id], onDelete: Cascade)
+}
+
+// ─────────────────────────────────────────────
+// Estoque
+// ─────────────────────────────────────────────
+
+model Stock {
+  id                String               @id @default(uuid())
+  presentationId    String               @unique
+  referenceQuantity Decimal              @db.Decimal(10, 2)
+  referenceDate     DateTime
+  referenceType     StockReferenceType
+  confidence        StockConfidenceLevel @default(UNKNOWN)
+  adjustedById      String?
+  updatedAt         DateTime             @updatedAt
+
+  presentation   MedicationPresentation @relation(fields: [presentationId], references: [id], onDelete: Cascade)
+  adjustedBy     User?                  @relation("StockAdjustedBy", fields: [adjustedById], references: [id])
+  confirmations  StockConfirmation[]
+  alerts         Alert[]
+}
+
+model StockConfirmation {
+  id                 String            @id @default(uuid())
+  stockId            String
+  confirmedById      String
+  qualitativeStatus  QualitativeStatus
+  quantityInformed   Decimal?          @db.Decimal(10, 2)
+  divergenceDetected Boolean           @default(false)
+  notes              String?
+  reviewedAt         DateTime?
+  confirmedAt        DateTime          @default(now())
+
+  stock       Stock @relation(fields: [stockId], references: [id], onDelete: Cascade)
+  confirmedBy User  @relation(fields: [confirmedById], references: [id])
+}
+
+// ─────────────────────────────────────────────
+// Compra
+// ─────────────────────────────────────────────
+
+model Purchase {
+  id           String        @id @default(uuid())
+  createdById  String
+  status       PurchaseStatus @default(PLANNED)
+  purchaseDate DateTime?
+  notes        String?
+  createdAt    DateTime      @default(now())
+
+  createdBy   User           @relation(fields: [createdById], references: [id])
+  items       PurchaseItem[]
+  quotations  Quotation[]
+  attachments Attachment[]
+}
+
+model PurchaseItem {
+  id               String   @id @default(uuid())
+  purchaseId       String
+  presentationId   String
+  pharmacyId       String
+  quantityPackages Int
+  unitPrice        Decimal  @db.Decimal(10, 2)
+  discountApplied  Decimal? @db.Decimal(10, 2)
+  promotional      Boolean  @default(false)
+  orderNumber      String?
+
+  purchase     Purchase               @relation(fields: [purchaseId], references: [id], onDelete: Cascade)
+  presentation MedicationPresentation @relation(fields: [presentationId], references: [id])
+  pharmacy     Pharmacy               @relation(fields: [pharmacyId], references: [id])
+  priceHistory PriceHistory[]
+}
+
+// ─────────────────────────────────────────────
+// Cotação
+// ─────────────────────────────────────────────
+
+model Quotation {
+  id          String          @id @default(uuid())
+  purchaseId  String?
+  createdById String
+  status      QuotationStatus @default(DRAFT)
+  createdAt   DateTime        @default(now())
+  completedAt DateTime?
+
+  purchase    Purchase?       @relation(fields: [purchaseId], references: [id])
+  createdBy   User            @relation(fields: [createdById], references: [id])
+  items       QuotationItem[]
+}
+
+model QuotationItem {
+  id               String   @id @default(uuid())
+  quotationId      String
+  presentationId   String
+  pharmacyId       String
+  pricePerPackage  Decimal? @db.Decimal(10, 2)
+  kitPrice         Decimal? @db.Decimal(10, 2)
+  kitQuantity      Int?
+  shippingEstimate Decimal? @db.Decimal(10, 2)
+  inStock          Boolean?
+  searchTermOverride String?
+  notes            String?
+
+  quotation    Quotation              @relation(fields: [quotationId], references: [id], onDelete: Cascade)
+  presentation MedicationPresentation @relation(fields: [presentationId], references: [id])
+  pharmacy     Pharmacy               @relation(fields: [pharmacyId], references: [id])
+  priceHistory PriceHistory[]
+}
+
+// ─────────────────────────────────────────────
+// Histórico de Preço
+// ─────────────────────────────────────────────
+
+model PriceHistory {
+  id              String      @id @default(uuid())
+  presentationId  String
+  pharmacyId      String
+  pricePerPackage Decimal     @db.Decimal(10, 2)
+  source          PriceSource
+  purchaseItemId  String?
+  quotationItemId String?
+  recordedAt      DateTime    @default(now())
+
+  presentation  MedicationPresentation @relation(fields: [presentationId], references: [id])
+  pharmacy      Pharmacy               @relation(fields: [pharmacyId], references: [id])
+  purchaseItem  PurchaseItem?          @relation(fields: [purchaseItemId], references: [id])
+  quotationItem QuotationItem?         @relation(fields: [quotationItemId], references: [id])
+}
+
+// ─────────────────────────────────────────────
+// Alerta
+// ─────────────────────────────────────────────
+
+model Alert {
+  id             String    @id @default(uuid())
+  type           AlertType
+  stockId        String?
+  presentationId String?
+  message        String
+  isRead         Boolean   @default(false)
+  isDismissed    Boolean   @default(false)
+  generatedAt    DateTime  @default(now())
+
+  stock        Stock?                  @relation(fields: [stockId], references: [id])
+  presentation MedicationPresentation? @relation(fields: [presentationId], references: [id])
+}
+
+// ─────────────────────────────────────────────
+// Anexo
+// ─────────────────────────────────────────────
+
+model Attachment {
+  id           String           @id @default(uuid())
+  entityType   AttachmentEntity
+  purchaseId   String?
+  url          String
+  filename     String
+  uploadedById String
+  uploadedAt   DateTime         @default(now())
+
+  purchase Purchase? @relation(fields: [purchaseId], references: [id])
+}
