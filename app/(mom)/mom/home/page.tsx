@@ -1,6 +1,7 @@
 import { auth } from "@/auth"
 import { prisma } from "@/lib/prisma/client"
 import Link from "next/link"
+import InstallPwaButton from "@/components/InstallPwaButton"
 
 export default async function MomHomePage() {
   const session = await auth()
@@ -53,7 +54,11 @@ export default async function MomHomePage() {
         </Link>
       </div>
 
-      <p className="text-xs text-gray-400 text-center mt-10">
+      <div className="mt-4">
+        <InstallPwaButton />
+      </div>
+
+      <p className="text-xs text-gray-400 text-center mt-6">
         Suas respostas chegam direto para o Lucas.
       </p>
     </div>
