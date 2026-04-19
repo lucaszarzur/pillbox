@@ -144,7 +144,14 @@ export default function StockClient({ medications }: { medications: Medication[]
           <Text size="xs" c="dimmed">{pres?.dosage ?? "—"}</Text>
         </Table.Td>
         <Table.Td>
-          <Text size="sm">{calc ? `${calc.theoretical.toFixed(0)} un` : "—"}</Text>
+          {calc ? (
+            <>
+              <Text size="sm">{calc.theoretical.toFixed(0)} un</Text>
+              {pres && pres.unitsPerPackage > 1 && (
+                <Text size="xs" c="dimmed">≈ {Math.floor(calc.theoretical / pres.unitsPerPackage)} cx</Text>
+              )}
+            </>
+          ) : <Text size="sm" c="dimmed">—</Text>}
         </Table.Td>
         <Table.Td>
           {calc?.daysRemaining != null

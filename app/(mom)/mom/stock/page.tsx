@@ -14,14 +14,7 @@ export default async function MomStockPage() {
             orderBy: { validFrom: "desc" },
             take: 1,
           },
-          stock: {
-            include: {
-              confirmations: {
-                orderBy: { confirmedAt: "desc" },
-                take: 1,
-              },
-            },
-          },
+          stock: true,
         },
       },
     },
@@ -33,17 +26,38 @@ export default async function MomStockPage() {
     const pres = med.presentations[0]
     const rule = pres?.consumptionRules[0]
     const stock = pres?.stock
+    const unitsPerPackage = pres?.unitsPerPackage ?? 1
 
-    if (!stock) return { name: med.name, dosage: pres?.dosage ?? "", days: null, status: "unknown" as const }
+    const theoretical = stock
+      ? Math.max(0, (() => {
+          const referenceQty = Number(stock.referenceQuantity)
+          const daysElapsed = (now - new Date(stock.referenceDate).getTime()) / (1000 * 60 * 60 * 24)
+          const dailyConsumption = rule ? Number(rule.unitsPerDose) * Number(rule.dosesPerDay) : 0
+          return referenceQty - dailyConsumption * daysElapsed
+        })())
+      : null
 
-    const referenceQty = Number(stock.referenceQuantity)
-    const daysElapsed = (now - new Date(stock.referenceDate).getTime()) / (1000 * 60 * 60 * 24)
     const dailyConsumption = rule ? Number(rule.unitsPerDose) * Number(rule.dosesPerDay) : 0
-    const theoretical = Math.max(0, referenceQty - dailyConsumption * daysElapsed)
-    const days = dailyConsumption > 0 ? Math.floor(theoretical / dailyConsumption) : null
+    const days = theoretical !== null && dailyConsumption > 0
+      ? Math.floor(theoretical / dailyConsumption)
+      : null
+
+    const boxes = theoretical !== null && unitsPerPackage > 1
+      ? Math.floor(theoretical / unitsPerPackage)
+      : null
 
     const status = days === null ? "unknown" : days <= 15 ? "critical" : days <= 30 ? "attention" : "ok"
-    return { name: med.name, dosage: pres?.dosage ?? "", days, status } as const
+
+    return {
+      name: med.name,
+      dosage: pres?.dosage ?? null,
+      theoretical: theoretical !== null ? Math.floor(theoretical) : null,
+      boxes,
+      unitsPerPackage,
+      days,
+      status,
+      occasional: !rule,
+    } as const
   })
 
   const statusLabel = { ok: "Tá bem", attention: "Ficando pouco", critical: "Acabando!", unknown: "Sem info" }
@@ -59,7 +73,7 @@ export default async function MomStockPage() {
       <div className="mb-8">
         <Link href="/mom/home" className="text-sm text-gray-400 mb-4 block">← Início</Link>
         <h1 className="text-2xl font-semibold">Meus remédios</h1>
-        <p className="text-gray-500 text-sm">Previsão de duração do estoque</p>
+        <p className="text-gray-500 text-sm">Situação atual do estoque</p>
       </div>
 
       <div className="space-y-3">
@@ -68,15 +82,35 @@ export default async function MomStockPage() {
             key={item.name}
             className={`border rounded-xl px-4 py-4 ${statusColor[item.status]}`}
           >
-            <div className="flex items-center justify-between">
+            <div className="flex items-start justify-between gap-4">
               <div>
                 <p className="font-medium">{item.name}</p>
-                <p className="text-sm opacity-70">{item.dosage}</p>
+                {item.dosage && <p className="text-sm opacity-70">{item.dosage}</p>}
               </div>
-              <div className="text-right">
-                <p className="font-semibold text-sm">{statusLabel[item.status]}</p>
-                {item.days !== null && (
-                  <p className="text-xs opacity-70">~{item.days} dias</p>
+              <div className="text-right shrink-0">
+                {item.occasional ? (
+                  <>
+                    {item.theoretical !== null ? (
+                      <>
+                        <p className="font-semibold text-sm">{item.theoretical} un.</p>
+                        {item.boxes !== null && item.boxes > 0 && (
+                          <p className="text-xs opacity-70">≈ {item.boxes} cx</p>
+                        )}
+                      </>
+                    ) : (
+                      <p className="font-semibold text-sm opacity-60">Sem estoque</p>
+                    )}
+                  </>
+                ) : (
+                  <>
+                    <p className="font-semibold text-sm">{statusLabel[item.status]}</p>
+                    {item.days !== null && (
+                      <p className="text-xs opacity-70">~{item.days} dias</p>
+                    )}
+                    {item.theoretical !== null && (
+                      <p className="text-xs opacity-60">{item.theoretical} un.{item.boxes !== null && item.boxes > 0 ? ` · ≈${item.boxes} cx` : ""}</p>
+                    )}
+                  </>
                 )}
               </div>
             </div>
