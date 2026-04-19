@@ -13,8 +13,10 @@ interface MedState {
   name: string
   dosage: string
   stockId: string | null
+  unitsPerPackage: number
   status: QStatus | null
   quantity: string
+  quantityMode: "units" | "boxes"
 }
 
 const STATUS_OPTIONS = [
@@ -33,8 +35,10 @@ export default function ConfirmClient({ medications }: { medications: Medication
       name: m.name,
       dosage: m.presentations[0]?.dosage ?? "",
       stockId: m.presentations[0]?.stock?.id ?? null,
+      unitsPerPackage: m.presentations[0]?.unitsPerPackage ?? 1,
       status: null,
       quantity: "",
+      quantityMode: "units",
     }))
   )
   const [generalNote, setGeneralNote] = useState("")
@@ -54,11 +58,26 @@ export default function ConfirmClient({ medications }: { medications: Medication
 
   function setStatus(status: QStatus) {
     setMeds((prev) => prev.map((m, i) => i === current ? { ...m, status } : m))
-    if (current < total - 1) setCurrent((c) => c + 1)
+    // Só avança automaticamente se OK — LOW/CRITICAL ficam na tela para preencher quantidade
+    if (status === "OK" && current < total - 1) setCurrent((c) => c + 1)
   }
 
   function setQuantity(qty: string) {
     setMeds((prev) => prev.map((m, i) => i === current ? { ...m, quantity: qty } : m))
+  }
+
+  function setQuantityMode(mode: "units" | "boxes") {
+    setMeds((prev) => prev.map((m, i) => i === current ? { ...m, quantityMode: mode, quantity: "" } : m))
+  }
+
+  function advance() {
+    if (current < total - 1) setCurrent((c) => c + 1)
+  }
+
+  function quantityInUnits(m: MedState): number | undefined {
+    if (!m.quantity) return undefined
+    const n = Number(m.quantity)
+    return m.quantityMode === "boxes" ? n * m.unitsPerPackage : n
   }
 
   async function handleSubmit() {
@@ -68,7 +87,7 @@ export default function ConfirmClient({ medications }: { medications: Medication
       .map((m) => ({
         stockId: m.stockId!,
         qualitativeStatus: m.status!,
-        quantityInformed: m.quantity ? Number(m.quantity) : undefined,
+        quantityInformed: quantityInUnits(m),
       }))
     await submitConfirmation(entries, generalNote)
     setStep("done")
@@ -100,6 +119,7 @@ export default function ConfirmClient({ medications }: { medications: Medication
         <div className="flex-1 space-y-3 mb-6">
           {meds.map((m, i) => {
             const opt = STATUS_OPTIONS.find((o) => o.value === m.status)
+            const qty = quantityInUnits(m)
             return (
               <button
                 key={m.id}
@@ -109,7 +129,7 @@ export default function ConfirmClient({ medications }: { medications: Medication
                 <p className="font-medium text-sm">{m.name} {m.dosage}</p>
                 <p className="text-sm mt-0.5 text-gray-500">
                   {opt?.label ?? "Não respondido"}
-                  {m.quantity ? ` · ${m.quantity} un.` : ""}
+                  {qty != null ? ` · ${qty} un.` : ""}
                 </p>
               </button>
             )
@@ -145,10 +165,17 @@ export default function ConfirmClient({ medications }: { medications: Medication
     )
   }
 
+  const showQuantity = med.status === "LOW" || med.status === "CRITICAL"
+  const previewQty = med.quantity
+    ? med.quantityMode === "boxes"
+      ? Number(med.quantity) * med.unitsPerPackage
+      : Number(med.quantity)
+    : null
+
   return (
     <div className="min-h-screen flex flex-col px-6 py-10 max-w-sm mx-auto">
-      <div className="flex items-center justify-between mb-8">
-        <span className="text-sm text-gray-500">{current + 1} de {total}</span>
+      <div className="mb-8">
+        <span className="text-sm text-gray-500 block mb-2">{current + 1} de {total}</span>
         <div className="flex gap-1">
           {meds.map((_, i) => (
             <div
@@ -180,17 +207,45 @@ export default function ConfirmClient({ medications }: { medications: Medication
           ))}
         </div>
 
-        {(med.status === "LOW" || med.status === "CRITICAL") && (
+        {showQuantity && (
           <div className="mt-6">
-            <label className="text-sm text-gray-500">Quantas unidades ainda tem? (opcional)</label>
+            <p className="text-sm text-gray-500 mb-2">Quantas ainda tem? (opcional)</p>
+
+            {/* Toggle unidades / caixas */}
+            <div className="flex rounded-lg border border-gray-300 overflow-hidden mb-2">
+              <button
+                type="button"
+                onClick={() => setQuantityMode("units")}
+                className={`flex-1 py-2 text-sm font-medium transition-colors ${
+                  med.quantityMode === "units" ? "bg-gray-900 text-white" : "bg-white text-gray-600"
+                }`}
+              >
+                Unidades
+              </button>
+              <button
+                type="button"
+                onClick={() => setQuantityMode("boxes")}
+                className={`flex-1 py-2 text-sm font-medium transition-colors ${
+                  med.quantityMode === "boxes" ? "bg-gray-900 text-white" : "bg-white text-gray-600"
+                }`}
+              >
+                Caixas
+              </button>
+            </div>
+
             <input
               type="number"
               min="0"
-              className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-base focus:outline-none focus:ring-1 focus:ring-gray-400"
-              placeholder="0"
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-base focus:outline-none focus:ring-1 focus:ring-gray-400"
+              placeholder={med.quantityMode === "boxes" ? "Ex: 2 caixas" : "Ex: 30 unidades"}
               value={med.quantity}
               onChange={(e) => setQuantity(e.target.value)}
             />
+            {med.quantityMode === "boxes" && previewQty != null && (
+              <p className="text-xs text-gray-400 mt-1">
+                = {previewQty} unidades
+              </p>
+            )}
           </div>
         )}
       </div>
@@ -204,6 +259,14 @@ export default function ConfirmClient({ medications }: { medications: Medication
             Voltar
           </button>
         )}
+        {showQuantity && current < total - 1 && (
+          <button
+            onClick={advance}
+            className="w-full bg-gray-900 text-white rounded-xl py-4 text-base font-medium"
+          >
+            Próximo →
+          </button>
+        )}
         {allAnswered && current === total - 1 && (
           <button
             onClick={() => setStep("review")}
@@ -212,7 +275,7 @@ export default function ConfirmClient({ medications }: { medications: Medication
             Revisar respostas →
           </button>
         )}
-        {!allAnswered && (
+        {!allAnswered && !showQuantity && (
           <button
             onClick={() => setCurrent((c) => Math.min(c + 1, total - 1))}
             className="w-full text-gray-400 py-3 text-sm"

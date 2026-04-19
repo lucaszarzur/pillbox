@@ -63,7 +63,7 @@ export default function MedicineForm({
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
-    if (!data.name || !data.dosage) { setError("Nome e dosagem são obrigatórios."); return }
+    if (!data.name) { setError("Nome é obrigatório."); return }
     setLoading(true)
     setError("")
     try {
@@ -149,7 +149,6 @@ export default function MedicineForm({
                 <Grid.Col span={6}>
                   <TextInput
                     label="Dosagem"
-                    required
                     placeholder="Ex: 20mg"
                     value={data.dosage}
                     onChange={(e) => set("dosage", e.target.value)}

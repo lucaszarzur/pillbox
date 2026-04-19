@@ -29,7 +29,7 @@ export async function createMedicine(data: MedicineFormData) {
       presentations: {
         create: {
           brand: data.brand.trim() || null,
-          dosage: data.dosage.trim(),
+          dosage: data.dosage.trim() || null,
           form: data.form,
           unitsPerPackage: data.unitsPerPackage,
           isPreferred: true,

@@ -147,7 +147,7 @@ model MedicationPresentation {
   id                 String         @id @default(uuid())
   medicationId       String
   brand              String?
-  dosage             String
+  dosage             String?
   form               MedicationForm @default(COMPRIMIDO)
   unitsPerPackage    Int
   packageDescription String?

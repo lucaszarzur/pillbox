@@ -21,7 +21,7 @@ export async function getMedsForConfirmation() {
     include: {
       presentations: {
         where: { isPreferred: true },
-        select: { id: true, dosage: true, stock: { select: { id: true } } },
+        select: { id: true, dosage: true, unitsPerPackage: true, stock: { select: { id: true } } },
       },
     },
   })
