@@ -43,7 +43,7 @@ export default async function MomStockPage() {
       : null
 
     const boxes = theoretical !== null && unitsPerPackage > 1
-      ? Math.floor(theoretical / unitsPerPackage)
+      ? Math.round(theoretical / unitsPerPackage)
       : null
 
     const status = days === null ? "unknown" : days <= 15 ? "critical" : days <= 30 ? "attention" : "ok"
@@ -94,7 +94,7 @@ export default async function MomStockPage() {
                       <>
                         <p className="font-semibold text-sm">{item.theoretical} un.</p>
                         {item.boxes !== null && item.boxes > 0 && (
-                          <p className="text-xs opacity-70">≈ {item.boxes} cx</p>
+                          <p className="text-xs opacity-70">~{item.boxes} cx</p>
                         )}
                       </>
                     ) : (

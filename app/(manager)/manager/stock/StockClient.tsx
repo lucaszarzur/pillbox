@@ -148,7 +148,7 @@ export default function StockClient({ medications }: { medications: Medication[]
             <>
               <Text size="sm">{calc.theoretical.toFixed(0)} un</Text>
               {pres && pres.unitsPerPackage > 1 && (
-                <Text size="xs" c="dimmed">≈ {Math.floor(calc.theoretical / pres.unitsPerPackage)} cx</Text>
+                <Text size="xs" c="dimmed">~{Math.round(calc.theoretical / pres.unitsPerPackage)} cx</Text>
               )}
             </>
           ) : <Text size="sm" c="dimmed">—</Text>}
