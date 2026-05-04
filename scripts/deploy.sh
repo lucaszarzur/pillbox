@@ -15,8 +15,8 @@ usage() {
 
 case "$target" in
   local)
-    echo "==> build local"
-    npm run build
+    echo "==> dev local (next dev -p 3002)"
+    npm run dev
     ;;
   vps)
     echo "==> deploy na VPS ($VPS_HOST:$VPS_PATH)"
