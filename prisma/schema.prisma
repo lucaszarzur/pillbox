@@ -219,6 +219,7 @@ model Purchase {
   createdById  String
   status       PurchaseStatus @default(PLANNED)
   purchaseDate DateTime?
+  receivedDate DateTime?
   notes        String?
   createdAt    DateTime      @default(now())
 

@@ -33,43 +33,23 @@ export async function getPurchasePageData() {
   return JSON.parse(JSON.stringify({ pharmacies, medications, purchases }))
 }
 
-export async function createPurchase(
-  pharmacyId: string,
-  purchaseDate: string,
-  items: { presentationId: string; quantityPackages: number; unitPrice: number }[],
-  notes: string
-) {
-  const session = await auth()
-  if (!session?.user?.id) throw new Error("Unauthorized")
-
-  const purchase = await prisma.purchase.create({
-    data: {
-      createdById: session.user.id,
-      status: "COMPLETED",
-      purchaseDate: new Date(purchaseDate),
-      notes: notes || null,
-      items: {
-        create: items.map((i) => ({
-          presentationId: i.presentationId,
-          pharmacyId,
-          quantityPackages: i.quantityPackages,
-          unitPrice: i.unitPrice,
-        })),
-      },
-    },
-    include: { items: { include: { presentation: true } } },
+async function applyPurchaseToStock(purchaseId: string, receivedDate: Date, userId: string) {
+  const items = await prisma.purchaseItem.findMany({
+    where: { purchaseId },
+    include: { presentation: true },
   })
 
-  // Atualiza estoque de cada item comprado
-  for (const item of purchase.items) {
+  for (const item of items) {
     const pres = item.presentation
     const unitsAdded = item.quantityPackages * pres.unitsPerPackage
 
     const existingStock = await prisma.stock.findUnique({ where: { presentationId: pres.id } })
     if (existingStock) {
       const currentQty = Number(existingStock.referenceQuantity)
-      const daysElapsed = (Date.now() - new Date(existingStock.referenceDate).getTime()) / (1000 * 60 * 60 * 24)
-      // Busca regra de consumo para calcular o consumo até agora
+      const daysElapsed = Math.max(
+        0,
+        (receivedDate.getTime() - new Date(existingStock.referenceDate).getTime()) / (1000 * 60 * 60 * 24)
+      )
       const rule = await prisma.consumptionRule.findFirst({
         where: { presentationId: pres.id, validUntil: null },
       })
@@ -80,18 +60,51 @@ export async function createPurchase(
         where: { presentationId: pres.id },
         data: {
           referenceQuantity: theoretical + unitsAdded,
-          referenceDate: new Date(),
+          referenceDate: receivedDate,
           referenceType: "PURCHASE",
           confidence: "HIGH",
-          adjustedById: session.user.id,
+          adjustedById: userId,
         },
       })
     }
+  }
+}
 
-    // Salva histórico de preço
+export async function createPurchase(
+  pharmacyId: string,
+  purchaseDate: string,
+  items: { presentationId: string; quantityPackages: number; unitPrice: number }[],
+  notes: string,
+  receivedDate: string | null
+) {
+  const session = await auth()
+  if (!session?.user?.id) throw new Error("Unauthorized")
+
+  const received = receivedDate ? new Date(receivedDate) : null
+
+  const purchase = await prisma.purchase.create({
+    data: {
+      createdById: session.user.id,
+      status: received ? "COMPLETED" : "PLANNED",
+      purchaseDate: new Date(purchaseDate),
+      receivedDate: received,
+      notes: notes || null,
+      items: {
+        create: items.map((i) => ({
+          presentationId: i.presentationId,
+          pharmacyId,
+          quantityPackages: i.quantityPackages,
+          unitPrice: i.unitPrice,
+        })),
+      },
+    },
+    include: { items: true },
+  })
+
+  for (const item of purchase.items) {
     await prisma.priceHistory.create({
       data: {
-        presentationId: pres.id,
+        presentationId: item.presentationId,
         pharmacyId,
         pricePerPackage: item.unitPrice,
         source: "PURCHASE",
@@ -100,10 +113,36 @@ export async function createPurchase(
     })
   }
 
+  if (received) {
+    await applyPurchaseToStock(purchase.id, received, session.user.id)
+  }
+
   revalidatePath("/manager/purchases")
   revalidatePath("/manager/stock")
   revalidatePath("/manager/dashboard")
   return purchase.id
+}
+
+export async function markPurchaseReceived(purchaseId: string, receivedDate: string) {
+  const session = await auth()
+  if (!session?.user?.id) throw new Error("Unauthorized")
+
+  const purchase = await prisma.purchase.findUnique({ where: { id: purchaseId } })
+  if (!purchase) throw new Error("Compra não encontrada.")
+  if (purchase.status === "COMPLETED") throw new Error("Compra já marcada como recebida.")
+
+  const received = new Date(receivedDate)
+
+  await prisma.purchase.update({
+    where: { id: purchaseId },
+    data: { status: "COMPLETED", receivedDate: received },
+  })
+
+  await applyPurchaseToStock(purchaseId, received, session.user.id)
+
+  revalidatePath("/manager/purchases")
+  revalidatePath("/manager/stock")
+  revalidatePath("/manager/dashboard")
 }
 
 export async function deletePurchase(id: string) {

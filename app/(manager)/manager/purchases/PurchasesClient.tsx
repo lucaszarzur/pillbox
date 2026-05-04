@@ -3,9 +3,47 @@
 import { useState } from "react"
 import {
   Stack, Title, Text, Button, Group, Table, Badge, NumberInput,
-  Paper, Tabs, Select, Modal, TextInput, Textarea,
+  Paper, Tabs, Select, Modal, TextInput, Textarea, Switch,
 } from "@mantine/core"
-import { createPurchase, deletePurchase, getPurchasePageData } from "./actions"
+import { createPurchase, deletePurchase, getPurchasePageData, markPurchaseReceived } from "./actions"
+
+function todayISO() {
+  const d = new Date()
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, "0")
+  const dd = String(d.getDate()).padStart(2, "0")
+  return `${y}-${m}-${dd}`
+}
+
+function DateSelector({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  return (
+    <Group gap="xs">
+      <Select
+        placeholder="Dia"
+        data={Array.from({ length: 31 }, (_, i) => ({ value: String(i + 1).padStart(2, "0"), label: String(i + 1) }))}
+        value={value.split("-")[2] ?? null}
+        onChange={(v) => { const [y, m] = value.split("-"); onChange(`${y}-${m}-${v ?? "01"}`) }}
+        style={{ width: 80 }}
+      />
+      <Select
+        placeholder="Mês"
+        data={["Jan","Fev","Mar","Abr","Mai","Jun","Jul","Ago","Set","Out","Nov","Dez"].map((l, i) => ({
+          value: String(i + 1).padStart(2, "0"), label: l,
+        }))}
+        value={value.split("-")[1] ?? null}
+        onChange={(v) => { const [y, , dd] = value.split("-"); onChange(`${y}-${v ?? "01"}-${dd}`) }}
+        style={{ width: 90 }}
+      />
+      <Select
+        placeholder="Ano"
+        data={Array.from({ length: 5 }, (_, i) => { const y = new Date().getFullYear() - i; return { value: String(y), label: String(y) } })}
+        value={value.split("-")[0] ?? null}
+        onChange={(v) => { const [, m, dd] = value.split("-"); onChange(`${v ?? "2025"}-${m}-${dd}`) }}
+        style={{ width: 100 }}
+      />
+    </Group>
+  )
+}
 
 type Data = Awaited<ReturnType<typeof getPurchasePageData>>
 type Purchase = Data["purchases"][number]
@@ -18,13 +56,9 @@ interface PurchaseItem {
 
 function NewPurchaseForm({ data, onSaved }: { data: Data; onSaved: () => void }) {
   const [pharmacyId, setPharmacyId] = useState<string | null>(null)
-  const [date, setDate] = useState(() => {
-    const d = new Date()
-    const y = d.getFullYear()
-    const m = String(d.getMonth() + 1).padStart(2, "0")
-    const dd = String(d.getDate()).padStart(2, "0")
-    return `${y}-${m}-${dd}`
-  })
+  const [date, setDate] = useState(() => todayISO())
+  const [alreadyReceived, setAlreadyReceived] = useState(false)
+  const [receivedDate, setReceivedDate] = useState(() => todayISO())
   const [notes, setNotes] = useState("")
   const [items, setItems] = useState<PurchaseItem[]>(
     data.medications
@@ -51,6 +85,12 @@ function NewPurchaseForm({ data, onSaved }: { data: Data; onSaved: () => void })
       const now = new Date()
       const purchaseDateTime = `${y}-${m}-${d}T${String(now.getHours()).padStart(2,"0")}:${String(now.getMinutes()).padStart(2,"0")}:${String(now.getSeconds()).padStart(2,"0")}`
 
+      let receivedISO: string | null = null
+      if (alreadyReceived) {
+        const [ry, rm, rd] = receivedDate.split("-")
+        receivedISO = `${ry}-${rm}-${rd}T${String(now.getHours()).padStart(2,"0")}:${String(now.getMinutes()).padStart(2,"0")}:${String(now.getSeconds()).padStart(2,"0")}`
+      }
+
       await createPurchase(
         pharmacyId,
         purchaseDateTime,
@@ -59,7 +99,8 @@ function NewPurchaseForm({ data, onSaved }: { data: Data; onSaved: () => void })
           quantityPackages: Number(i.quantityPackages),
           unitPrice: Number(i.unitPrice),
         })),
-        notes
+        notes,
+        receivedISO
       )
       onSaved()
     } catch {
@@ -85,32 +126,23 @@ function NewPurchaseForm({ data, onSaved }: { data: Data; onSaved: () => void })
         />
         <div>
           <Text size="sm" fw={500} mb={4}>Data da compra</Text>
-          <Group gap="xs">
-            <Select
-              placeholder="Dia"
-              data={Array.from({ length: 31 }, (_, i) => ({ value: String(i + 1).padStart(2, "0"), label: String(i + 1) }))}
-              value={date.split("-")[2] ?? null}
-              onChange={(v) => setDate((d) => { const [y, m] = d.split("-"); return `${y}-${m}-${v ?? "01"}` })}
-              style={{ width: 80 }}
-            />
-            <Select
-              placeholder="Mês"
-              data={["Jan","Fev","Mar","Abr","Mai","Jun","Jul","Ago","Set","Out","Nov","Dez"].map((l, i) => ({
-                value: String(i + 1).padStart(2, "0"), label: l,
-              }))}
-              value={date.split("-")[1] ?? null}
-              onChange={(v) => setDate((d) => { const [y, , dd] = d.split("-"); return `${y}-${v ?? "01"}-${dd}` })}
-              style={{ width: 90 }}
-            />
-            <Select
-              placeholder="Ano"
-              data={Array.from({ length: 5 }, (_, i) => { const y = new Date().getFullYear() - i; return { value: String(y), label: String(y) } })}
-              value={date.split("-")[0] ?? null}
-              onChange={(v) => setDate((d) => { const [, m, dd] = d.split("-"); return `${v ?? "2025"}-${m}-${dd}` })}
-              style={{ width: 100 }}
-            />
-          </Group>
+          <DateSelector value={date} onChange={setDate} />
         </div>
+      </Group>
+
+      <Group align="flex-end" gap="md">
+        <Switch
+          label="Já chegou?"
+          description="Marque para somar ao estoque agora"
+          checked={alreadyReceived}
+          onChange={(e) => setAlreadyReceived(e.currentTarget.checked)}
+        />
+        {alreadyReceived && (
+          <div>
+            <Text size="sm" fw={500} mb={4}>Data do recebimento</Text>
+            <DateSelector value={receivedDate} onChange={setReceivedDate} />
+          </div>
+        )}
       </Group>
 
       <Table withTableBorder withColumnBorders>
@@ -200,6 +232,10 @@ function NewPurchaseForm({ data, onSaved }: { data: Data; onSaved: () => void })
 function PurchaseHistory({ purchases }: { purchases: Purchase[] }) {
   const [deleteId, setDeleteId] = useState<string | null>(null)
   const [deleting, setDeleting] = useState(false)
+  const [receiveId, setReceiveId] = useState<string | null>(null)
+  const [receiveDate, setReceiveDate] = useState(() => todayISO())
+  const [receiving, setReceiving] = useState(false)
+  const [receiveError, setReceiveError] = useState("")
 
   async function handleDelete() {
     if (!deleteId) return
@@ -209,6 +245,23 @@ function PurchaseHistory({ purchases }: { purchases: Purchase[] }) {
       setDeleteId(null)
     } finally {
       setDeleting(false)
+    }
+  }
+
+  async function handleReceive() {
+    if (!receiveId) return
+    setReceiving(true)
+    setReceiveError("")
+    try {
+      const now = new Date()
+      const [y, m, d] = receiveDate.split("-")
+      const iso = `${y}-${m}-${d}T${String(now.getHours()).padStart(2,"0")}:${String(now.getMinutes()).padStart(2,"0")}:${String(now.getSeconds()).padStart(2,"0")}`
+      await markPurchaseReceived(receiveId, iso)
+      setReceiveId(null)
+    } catch {
+      setReceiveError("Erro ao marcar como recebida.")
+    } finally {
+      setReceiving(false)
     }
   }
 
@@ -228,15 +281,34 @@ function PurchaseHistory({ purchases }: { purchases: Purchase[] }) {
           )
           const pharmacyName = p.items[0]?.pharmacy?.name ?? "—"
 
+          const pending = p.status !== "COMPLETED"
+          const receivedLabel = p.receivedDate
+            ? new Date(p.receivedDate).toLocaleDateString("pt-BR")
+            : null
+
           return (
             <Paper key={p.id} withBorder p="md" radius="md">
               <Group justify="space-between" mb="xs">
                 <div>
-                  <Text fw={600} size="sm">{date} · {pharmacyName}</Text>
+                  <Group gap="xs" align="center">
+                    <Text fw={600} size="sm">{date} · {pharmacyName}</Text>
+                    {pending ? (
+                      <Badge size="xs" color="yellow" variant="light">Aguardando entrega</Badge>
+                    ) : (
+                      <Badge size="xs" color="green" variant="light">
+                        Recebida{receivedLabel ? ` · ${receivedLabel}` : ""}
+                      </Badge>
+                    )}
+                  </Group>
                   <Text size="xs" c="dimmed">{p.items.length} item(s)</Text>
                 </div>
                 <Group gap="xs">
                   <Text fw={700}>R$ {total.toFixed(2)}</Text>
+                  {pending && (
+                    <Button size="xs" variant="light" color="green" onClick={() => { setReceiveId(p.id); setReceiveDate(todayISO()); setReceiveError("") }}>
+                      Marcar como recebida
+                    </Button>
+                  )}
                   <Button size="xs" variant="subtle" color="red" onClick={() => setDeleteId(p.id)}>
                     Excluir
                   </Button>
@@ -271,6 +343,18 @@ function PurchaseHistory({ purchases }: { purchases: Purchase[] }) {
           <Button variant="subtle" color="gray" onClick={() => setDeleteId(null)}>Cancelar</Button>
           <Button color="red" loading={deleting} onClick={handleDelete}>Excluir</Button>
         </Group>
+      </Modal>
+
+      <Modal opened={!!receiveId} onClose={() => setReceiveId(null)} title="Marcar como recebida" size="sm" centered>
+        <Stack gap="md">
+          <Text size="sm">Em qual data o pedido foi entregue?</Text>
+          <DateSelector value={receiveDate} onChange={setReceiveDate} />
+          {receiveError && <Text c="red" size="sm">{receiveError}</Text>}
+          <Group justify="flex-end">
+            <Button variant="subtle" color="gray" onClick={() => setReceiveId(null)}>Cancelar</Button>
+            <Button color="green" loading={receiving} onClick={handleReceive}>Confirmar recebimento</Button>
+          </Group>
+        </Stack>
       </Modal>
     </>
   )
