@@ -178,6 +178,13 @@ export default function MedicineForm({
                 <Grid.Col span={6}>
                   <NumberInput
                     label={data.form === "COTIRIO" ? "Frascos por caixa" : "Unidades por caixa"}
+                    description={
+                      data.form === "COTIRIO"
+                        ? "Quando você compra 1 embalagem na farmácia, quantos frascos vêm dentro? (geralmente 1)"
+                        : data.form === "POMADA" || data.form === "LIQUIDO"
+                        ? "Quando você compra 1 embalagem, quantos tubos/frascos vêm dentro? (geralmente 1)"
+                        : "Quantos comprimidos/cápsulas vêm em cada caixa que você compra."
+                    }
                     min={1}
                     value={data.unitsPerPackage}
                     onChange={(v) => set("unitsPerPackage", Number(v))}
@@ -195,7 +202,7 @@ export default function MedicineForm({
 
                 <NumberInput
                   label="Duração estimada por embalagem (dias)"
-                  description="Use para colírios, cremes, pomadas etc. — quando não dá pra contar unidades. Deixe em branco pra usar doses/dia. Uma margem de 10% é aplicada automaticamente."
+                  description="Quantos dias UM frasco/tubo costuma durar. Use pra colírio, creme, pomada — quando não dá pra contar gotas ou aplicações. Ex: 1 tubo de Corega dura ~30 dias. Deixe em branco pra usar o cálculo por doses/dia. Uma margem de 10% é aplicada."
                   placeholder="Ex: 30"
                   min={1}
                   value={data.daysPerPackage ?? ""}
@@ -214,6 +221,11 @@ export default function MedicineForm({
                       <Grid.Col span={6}>
                         <NumberInput
                           label={data.form === "COTIRIO" ? "Aplicações por dia" : "Doses por dia"}
+                          description={
+                            data.form === "COTIRIO"
+                              ? "Quantas vezes por dia sua mãe pinga o colírio."
+                              : "Quantas vezes por dia sua mãe toma o remédio."
+                          }
                           min={0.5}
                           step={0.5}
                           value={data.dosesPerDay}
@@ -223,6 +235,11 @@ export default function MedicineForm({
                       <Grid.Col span={6}>
                         <NumberInput
                           label={data.form === "COTIRIO" ? "Frascos por aplicação" : "Unidades por dose"}
+                          description={
+                            data.form === "COTIRIO"
+                              ? "Quanto de frasco gasta em cada aplicação (quase sempre uma fração pequena)."
+                              : "Quantos comprimidos/cápsulas ela toma de cada vez (geralmente 1)."
+                          }
                           min={0.001}
                           step={data.form === "COTIRIO" ? 0.01 : 0.5}
                           decimalScale={data.form === "COTIRIO" ? 3 : 1}
