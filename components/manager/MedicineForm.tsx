@@ -1,9 +1,21 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { Modal, TextInput, Textarea, Select, NumberInput, Button, Stack, Group, Grid, Text, Divider, Switch } from "@mantine/core"
+import { Modal, TextInput, Textarea, Select, NumberInput, Button, Stack, Group, Grid, Text, Divider, Switch, Tooltip } from "@mantine/core"
+import { IconInfoCircle } from "@tabler/icons-react"
 import { createMedicine, updateMedicine, type MedicineFormData } from "@/app/(manager)/manager/medicines/actions"
 import { MedicationCategory, MedicationForm } from "@prisma/client"
+
+function LabelWithHint({ label, hint }: { label: string; hint: string }) {
+  return (
+    <Group gap={4} wrap="nowrap" style={{ display: "inline-flex" }}>
+      <span>{label}</span>
+      <Tooltip label={hint} multiline w={260} withArrow position="top" events={{ hover: true, focus: true, touch: true }}>
+        <IconInfoCircle size={14} style={{ cursor: "help", opacity: 0.6 }} />
+      </Tooltip>
+    </Group>
+  )
+}
 
 const CATEGORY_OPTIONS = [
   { value: "CONTINUOUS", label: "Uso contínuo" },
@@ -177,13 +189,17 @@ export default function MedicineForm({
                 </Grid.Col>
                 <Grid.Col span={6}>
                   <NumberInput
-                    label={data.form === "COTIRIO" ? "Frascos por caixa" : "Unidades por caixa"}
-                    description={
-                      data.form === "COTIRIO"
-                        ? "Quando você compra 1 embalagem na farmácia, quantos frascos vêm dentro? (geralmente 1)"
-                        : data.form === "POMADA" || data.form === "LIQUIDO"
-                        ? "Quando você compra 1 embalagem, quantos tubos/frascos vêm dentro? (geralmente 1)"
-                        : "Quantos comprimidos/cápsulas vêm em cada caixa que você compra."
+                    label={
+                      <LabelWithHint
+                        label={data.form === "COTIRIO" ? "Frascos por caixa" : "Unidades por caixa"}
+                        hint={
+                          data.form === "COTIRIO"
+                            ? "Quando você compra 1 embalagem na farmácia, quantos frascos vêm dentro? (geralmente 1)"
+                            : data.form === "POMADA" || data.form === "LIQUIDO"
+                            ? "Quando você compra 1 embalagem, quantos tubos/frascos vêm dentro? (geralmente 1)"
+                            : "Quantos comprimidos/cápsulas vêm em cada caixa que você compra."
+                        }
+                      />
                     }
                     min={1}
                     value={data.unitsPerPackage}
@@ -201,8 +217,12 @@ export default function MedicineForm({
                 <Text size="xs" fw={600} tt="uppercase" c="dimmed" mb="xs">Consumo</Text>
 
                 <NumberInput
-                  label="Duração estimada por embalagem (dias)"
-                  description="Quantos dias UM frasco/tubo costuma durar. Use pra colírio, creme, pomada — quando não dá pra contar gotas ou aplicações. Ex: 1 tubo de Corega dura ~30 dias. Deixe em branco pra usar o cálculo por doses/dia. Uma margem de 10% é aplicada."
+                  label={
+                    <LabelWithHint
+                      label="Duração estimada por embalagem (dias)"
+                      hint="Quantos dias UM frasco/tubo costuma durar. Use pra colírio, creme, pomada — quando não dá pra contar gotas ou aplicações. Ex: 1 tubo de Corega dura ~30 dias. Deixe em branco pra usar o cálculo por doses/dia. Uma margem de 10% é aplicada."
+                    />
+                  }
                   placeholder="Ex: 30"
                   min={1}
                   value={data.daysPerPackage ?? ""}
@@ -220,11 +240,15 @@ export default function MedicineForm({
                     <Grid>
                       <Grid.Col span={6}>
                         <NumberInput
-                          label={data.form === "COTIRIO" ? "Aplicações por dia" : "Doses por dia"}
-                          description={
-                            data.form === "COTIRIO"
-                              ? "Quantas vezes por dia sua mãe pinga o colírio."
-                              : "Quantas vezes por dia sua mãe toma o remédio."
+                          label={
+                            <LabelWithHint
+                              label={data.form === "COTIRIO" ? "Aplicações por dia" : "Doses por dia"}
+                              hint={
+                                data.form === "COTIRIO"
+                                  ? "Quantas vezes por dia sua mãe pinga o colírio."
+                                  : "Quantas vezes por dia sua mãe toma o remédio."
+                              }
+                            />
                           }
                           min={0.5}
                           step={0.5}
@@ -234,11 +258,15 @@ export default function MedicineForm({
                       </Grid.Col>
                       <Grid.Col span={6}>
                         <NumberInput
-                          label={data.form === "COTIRIO" ? "Frascos por aplicação" : "Unidades por dose"}
-                          description={
-                            data.form === "COTIRIO"
-                              ? "Quanto de frasco gasta em cada aplicação (quase sempre uma fração pequena)."
-                              : "Quantos comprimidos/cápsulas ela toma de cada vez (geralmente 1)."
+                          label={
+                            <LabelWithHint
+                              label={data.form === "COTIRIO" ? "Frascos por aplicação" : "Unidades por dose"}
+                              hint={
+                                data.form === "COTIRIO"
+                                  ? "Quanto de frasco gasta em cada aplicação (quase sempre uma fração pequena)."
+                                  : "Quantos comprimidos/cápsulas ela toma de cada vez (geralmente 1)."
+                              }
+                            />
                           }
                           min={0.001}
                           step={data.form === "COTIRIO" ? 0.01 : 0.5}
