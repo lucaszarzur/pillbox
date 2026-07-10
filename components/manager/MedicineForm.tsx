@@ -27,7 +27,7 @@ const FORM_OPTIONS = [
   { value: "COMPRIMIDO", label: "Comprimido" },
   { value: "CAPSULA", label: "Cápsula" },
   { value: "LIQUIDO", label: "Líquido" },
-  { value: "COTIRIO", label: "Colírio" },
+  { value: "COLIRIO", label: "Colírio" },
   { value: "INJETAVEL", label: "Injetável" },
   { value: "POMADA", label: "Pomada" },
   { value: "OUTRO", label: "Outro" },
@@ -191,9 +191,9 @@ export default function MedicineForm({
                   <NumberInput
                     label={
                       <LabelWithHint
-                        label={data.form === "COTIRIO" ? "Frascos por caixa" : "Unidades por caixa"}
+                        label={data.form === "COLIRIO" ? "Frascos por caixa" : "Unidades por caixa"}
                         hint={
-                          data.form === "COTIRIO"
+                          data.form === "COLIRIO"
                             ? "Quando você compra 1 embalagem na farmácia, quantos frascos vêm dentro? (geralmente 1)"
                             : data.form === "POMADA" || data.form === "LIQUIDO"
                             ? "Quando você compra 1 embalagem, quantos tubos/frascos vêm dentro? (geralmente 1)"
@@ -242,9 +242,9 @@ export default function MedicineForm({
                         <NumberInput
                           label={
                             <LabelWithHint
-                              label={data.form === "COTIRIO" ? "Aplicações por dia" : "Doses por dia"}
+                              label={data.form === "COLIRIO" ? "Aplicações por dia" : "Doses por dia"}
                               hint={
-                                data.form === "COTIRIO"
+                                data.form === "COLIRIO"
                                   ? "Quantas vezes por dia sua mãe pinga o colírio."
                                   : "Quantas vezes por dia sua mãe toma o remédio."
                               }
@@ -260,17 +260,17 @@ export default function MedicineForm({
                         <NumberInput
                           label={
                             <LabelWithHint
-                              label={data.form === "COTIRIO" ? "Frascos por aplicação" : "Unidades por dose"}
+                              label={data.form === "COLIRIO" ? "Frascos por aplicação" : "Unidades por dose"}
                               hint={
-                                data.form === "COTIRIO"
+                                data.form === "COLIRIO"
                                   ? "Quanto de frasco gasta em cada aplicação (quase sempre uma fração pequena)."
                                   : "Quantos comprimidos/cápsulas ela toma de cada vez (geralmente 1)."
                               }
                             />
                           }
                           min={0.001}
-                          step={data.form === "COTIRIO" ? 0.01 : 0.5}
-                          decimalScale={data.form === "COTIRIO" ? 3 : 1}
+                          step={data.form === "COLIRIO" ? 0.01 : 0.5}
+                          decimalScale={data.form === "COLIRIO" ? 3 : 1}
                           fixedDecimalScale={false}
                           value={data.unitsPerDose}
                           onChange={(v) => set("unitsPerDose", Number(v))}
@@ -278,7 +278,7 @@ export default function MedicineForm({
                       </Grid.Col>
                     </Grid>
                     <Text size="xs" c="dimmed" mt="xs">
-                      {data.form === "COTIRIO"
+                      {data.form === "COLIRIO"
                         ? <>Consumo diário: <strong>{(data.dosesPerDay * data.unitsPerDose).toFixed(3)} frasco(s)/dia</strong></>
                         : <>Consumo diário: <strong>{(data.dosesPerDay * data.unitsPerDose).toFixed(1)} unidade(s)/dia</strong></>
                       }
