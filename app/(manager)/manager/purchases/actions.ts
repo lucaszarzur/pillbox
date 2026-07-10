@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache"
 import { prisma } from "@/lib/prisma/client"
 import { auth } from "@/auth"
+import { calcCurrentStock } from "@/lib/stockCalc"
 
 export async function getPurchasePageData() {
   const [pharmacies, medications, purchases] = await Promise.all([
@@ -13,7 +14,7 @@ export async function getPurchasePageData() {
       include: {
         presentations: {
           where: { isPreferred: true },
-          select: { id: true, dosage: true, brand: true, unitsPerPackage: true },
+          select: { id: true, dosage: true, brand: true, unitsPerPackage: true, daysPerPackage: true },
         },
       },
     }),
@@ -44,22 +45,35 @@ async function applyPurchaseToStock(purchaseId: string, receivedDate: Date, user
     const unitsAdded = item.quantityPackages * pres.unitsPerPackage
 
     const existingStock = await prisma.stock.findUnique({ where: { presentationId: pres.id } })
+    const rule = await prisma.consumptionRule.findFirst({
+      where: { presentationId: pres.id, validUntil: null },
+    })
+
     if (existingStock) {
-      const currentQty = Number(existingStock.referenceQuantity)
-      const daysElapsed = Math.max(
-        0,
-        (receivedDate.getTime() - new Date(existingStock.referenceDate).getTime()) / (1000 * 60 * 60 * 24)
-      )
-      const rule = await prisma.consumptionRule.findFirst({
-        where: { presentationId: pres.id, validUntil: null },
+      const { current } = calcCurrentStock({
+        referenceQuantity: existingStock.referenceQuantity,
+        referenceDate: existingStock.referenceDate,
+        rule,
+        unitsPerPackage: pres.unitsPerPackage,
+        daysPerPackage: pres.daysPerPackage ?? null,
+        now: receivedDate,
       })
-      const dailyConsumption = rule ? Number(rule.unitsPerDose) * Number(rule.dosesPerDay) : 0
-      const theoretical = Math.max(0, currentQty - dailyConsumption * daysElapsed)
 
       await prisma.stock.update({
         where: { presentationId: pres.id },
         data: {
-          referenceQuantity: theoretical + unitsAdded,
+          referenceQuantity: current + unitsAdded,
+          referenceDate: receivedDate,
+          referenceType: "PURCHASE",
+          confidence: "HIGH",
+          adjustedById: userId,
+        },
+      })
+    } else {
+      await prisma.stock.create({
+        data: {
+          presentationId: pres.id,
+          referenceQuantity: unitsAdded,
           referenceDate: receivedDate,
           referenceType: "PURCHASE",
           confidence: "HIGH",

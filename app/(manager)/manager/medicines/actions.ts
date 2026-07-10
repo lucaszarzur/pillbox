@@ -14,6 +14,7 @@ export type MedicineFormData = {
   dosage: string
   form: MedicationForm
   unitsPerPackage: number
+  daysPerPackage: number | null
   unitsPerDose: number
   dosesPerDay: number
 }
@@ -32,6 +33,7 @@ export async function createMedicine(data: MedicineFormData) {
           dosage: data.dosage.trim() || null,
           form: data.form,
           unitsPerPackage: data.unitsPerPackage,
+          daysPerPackage: data.daysPerPackage,
           isPreferred: true,
           ...(data.category !== "OCCASIONAL" && {
             consumptionRules: {
@@ -89,6 +91,7 @@ export async function updateMedicine(id: string, data: MedicineFormData) {
         dosage: data.dosage.trim(),
         form: data.form,
         unitsPerPackage: data.unitsPerPackage,
+        daysPerPackage: data.daysPerPackage,
       },
     })
 

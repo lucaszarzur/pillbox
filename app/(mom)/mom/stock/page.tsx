@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma/client"
 import Link from "next/link"
+import { calcCurrentStock } from "@/lib/stockCalc"
 
 export default async function MomStockPage() {
   const medications = await prisma.medication.findMany({
@@ -28,19 +29,19 @@ export default async function MomStockPage() {
     const stock = pres?.stock
     const unitsPerPackage = pres?.unitsPerPackage ?? 1
 
-    const theoretical = stock
-      ? Math.max(0, (() => {
-          const referenceQty = Number(stock.referenceQuantity)
-          const daysElapsed = (now - new Date(stock.referenceDate).getTime()) / (1000 * 60 * 60 * 24)
-          const dailyConsumption = rule ? Number(rule.unitsPerDose) * Number(rule.dosesPerDay) : 0
-          return referenceQty - dailyConsumption * daysElapsed
-        })())
+    const calc = stock && pres
+      ? calcCurrentStock({
+          referenceQuantity: stock.referenceQuantity,
+          referenceDate: stock.referenceDate,
+          rule: rule ?? null,
+          unitsPerPackage: pres.unitsPerPackage,
+          daysPerPackage: pres.daysPerPackage ?? null,
+          now,
+        })
       : null
 
-    const dailyConsumption = rule ? Number(rule.unitsPerDose) * Number(rule.dosesPerDay) : 0
-    const days = theoretical !== null && dailyConsumption > 0
-      ? Math.floor(theoretical / dailyConsumption)
-      : null
+    const theoretical = calc ? calc.current : null
+    const days = calc?.daysRemaining != null ? Math.floor(calc.daysRemaining) : null
 
     const boxes = theoretical !== null && unitsPerPackage > 1
       ? Math.round(theoretical / unitsPerPackage)

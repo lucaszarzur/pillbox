@@ -6,6 +6,7 @@ import {
   SimpleGrid, Divider, Loader,
 } from "@mantine/core"
 import { getReportData } from "./actions"
+import { calcCurrentStock } from "@/lib/stockCalc"
 
 type Data = Awaited<ReturnType<typeof getReportData>>
 type SpendingRow = Data["byMedication"][number]
@@ -23,14 +24,15 @@ const MONTHS = [
 function calcTheoreticalDays(med: Data["medications"][number]) {
   const pres = med.presentations[0]
   if (!pres?.stock) return null
-  const rule = pres.consumptionRules[0]
-  if (!rule) return null
-  const referenceQty = Number(pres.stock.referenceQuantity)
-  const daysElapsed = (Date.now() - new Date(pres.stock.referenceDate).getTime()) / (1000 * 60 * 60 * 24)
-  const dailyConsumption = Number(rule.unitsPerDose) * Number(rule.dosesPerDay)
-  if (dailyConsumption === 0) return null
-  const theoretical = Math.max(0, referenceQty - dailyConsumption * daysElapsed)
-  return { theoretical, daysRemaining: theoretical / dailyConsumption, dailyConsumption }
+  const result = calcCurrentStock({
+    referenceQuantity: pres.stock.referenceQuantity,
+    referenceDate: pres.stock.referenceDate,
+    rule: pres.consumptionRules[0] ?? null,
+    unitsPerPackage: pres.unitsPerPackage,
+    daysPerPackage: pres.daysPerPackage ?? null,
+  })
+  if (result.dailyConsumption === 0 || result.daysRemaining == null) return null
+  return { theoretical: result.current, daysRemaining: result.daysRemaining, dailyConsumption: result.dailyConsumption }
 }
 
 export default function ReportClient({ initialData, initialYear, initialMonth }: {

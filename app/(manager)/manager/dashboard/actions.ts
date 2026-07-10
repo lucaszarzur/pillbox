@@ -1,6 +1,7 @@
 "use server"
 
 import { prisma } from "@/lib/prisma/client"
+import { calcCurrentStock } from "@/lib/stockCalc"
 
 export async function getDashboardData() {
   const medications = await prisma.medication.findMany({
@@ -38,11 +39,14 @@ export async function getDashboardData() {
 
     if (!stock) continue
 
-    const referenceQty = Number(stock.referenceQuantity)
-    const daysElapsed = (now - new Date(stock.referenceDate).getTime()) / (1000 * 60 * 60 * 24)
-    const dailyConsumption = rule ? Number(rule.unitsPerDose) * Number(rule.dosesPerDay) : 0
-    const theoretical = Math.max(0, referenceQty - dailyConsumption * daysElapsed)
-    const daysRemaining = dailyConsumption > 0 ? theoretical / dailyConsumption : null
+    const { daysRemaining } = calcCurrentStock({
+      referenceQuantity: stock.referenceQuantity,
+      referenceDate: stock.referenceDate,
+      rule: rule ?? null,
+      unitsPerPackage: pres.unitsPerPackage,
+      daysPerPackage: pres.daysPerPackage ?? null,
+      now,
+    })
 
     let status: "critical" | "attention" | "ok" = "ok"
     if (daysRemaining !== null && daysRemaining <= 15) { critical++; status = "critical" }

@@ -1,6 +1,7 @@
 "use server"
 
 import { prisma } from "@/lib/prisma/client"
+import { calcCurrentStock } from "@/lib/stockCalc"
 
 export async function generateAlerts() {
   const medications = await prisma.medication.findMany({
@@ -28,11 +29,14 @@ export async function generateAlerts() {
     const rule = pres?.consumptionRules[0]
     if (!stock) continue
 
-    const referenceQty = Number(stock.referenceQuantity)
-    const daysElapsed = (now - new Date(stock.referenceDate).getTime()) / (1000 * 60 * 60 * 24)
-    const dailyConsumption = rule ? Number(rule.unitsPerDose) * Number(rule.dosesPerDay) : 0
-    const theoretical = Math.max(0, referenceQty - dailyConsumption * daysElapsed)
-    const daysRemaining = dailyConsumption > 0 ? theoretical / dailyConsumption : null
+    const { daysRemaining } = calcCurrentStock({
+      referenceQuantity: stock.referenceQuantity,
+      referenceDate: stock.referenceDate,
+      rule: rule ?? null,
+      unitsPerPackage: pres.unitsPerPackage,
+      daysPerPackage: pres.daysPerPackage ?? null,
+      now,
+    })
 
     // Alerta de estoque crítico (≤10 dias)
     if (daysRemaining !== null && daysRemaining <= 10) {

@@ -4,6 +4,7 @@ import { useState, useEffect } from "react"
 import { Table, Badge, Button, Text, Stack, Group, Modal, Timeline, Loader } from "@mantine/core"
 import StockAdjustForm from "@/components/manager/StockAdjustForm"
 import { getStockOverview, getStockHistory } from "./actions"
+import { calcCurrentStock } from "@/lib/stockCalc"
 
 type Medication = Awaited<ReturnType<typeof getStockOverview>>[number]
 type History = Awaited<ReturnType<typeof getStockHistory>>
@@ -11,15 +12,14 @@ type History = Awaited<ReturnType<typeof getStockHistory>>
 function calcTheoreticalStock(medication: Medication) {
   const pres = medication.presentations[0]
   if (!pres?.stock) return null
-  const rule = pres.consumptionRules[0]
-  const stock = pres.stock
-  const referenceQty = Number(stock.referenceQuantity)
-  const daysElapsed = (Date.now() - new Date(stock.referenceDate).getTime()) / (1000 * 60 * 60 * 24)
-  if (!rule) return { theoretical: referenceQty, daysRemaining: null, dailyConsumption: null }
-  const dailyConsumption = Number(rule.unitsPerDose) * Number(rule.dosesPerDay)
-  const theoretical = Math.max(0, referenceQty - dailyConsumption * daysElapsed)
-  const daysRemaining = dailyConsumption > 0 ? theoretical / dailyConsumption : null
-  return { theoretical, daysRemaining, dailyConsumption }
+  const result = calcCurrentStock({
+    referenceQuantity: pres.stock.referenceQuantity,
+    referenceDate: pres.stock.referenceDate,
+    rule: pres.consumptionRules[0] ?? null,
+    unitsPerPackage: pres.unitsPerPackage,
+    daysPerPackage: pres.daysPerPackage ?? null,
+  })
+  return { theoretical: result.current, daysRemaining: result.daysRemaining, dailyConsumption: result.dailyConsumption }
 }
 
 const statusLabel: Record<string, string> = { OK: "Tá bem", LOW: "Ficando pouco", CRITICAL: "Acabando" }

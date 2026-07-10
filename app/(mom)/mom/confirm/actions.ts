@@ -3,16 +3,7 @@
 import { revalidatePath } from "next/cache"
 import { prisma } from "@/lib/prisma/client"
 import { auth } from "@/auth"
-
-function calcTheoreticalQty(stock: {
-  referenceQuantity: unknown
-  referenceDate: unknown
-}, rule: { unitsPerDose: unknown; dosesPerDay: unknown } | null): number {
-  const referenceQty = Number(stock.referenceQuantity)
-  const daysElapsed = (Date.now() - new Date(stock.referenceDate as string).getTime()) / (1000 * 60 * 60 * 24)
-  const dailyConsumption = rule ? Number(rule.unitsPerDose) * Number(rule.dosesPerDay) : 0
-  return Math.max(0, referenceQty - dailyConsumption * daysElapsed)
-}
+import { calcCurrentStock } from "@/lib/stockCalc"
 
 export async function getMedsForConfirmation() {
   const data = await prisma.medication.findMany({
@@ -21,7 +12,7 @@ export async function getMedsForConfirmation() {
     include: {
       presentations: {
         where: { isPreferred: true },
-        select: { id: true, dosage: true, unitsPerPackage: true, stock: { select: { id: true } } },
+        select: { id: true, dosage: true, unitsPerPackage: true, daysPerPackage: true, stock: { select: { id: true } } },
       },
     },
   })
@@ -54,7 +45,15 @@ export async function submitConfirmation(
     })
 
     const rule = stock?.presentation.consumptionRules[0] ?? null
-    const theoretical = stock ? calcTheoreticalQty(stock, rule) : null
+    const theoretical = stock
+      ? calcCurrentStock({
+          referenceQuantity: stock.referenceQuantity,
+          referenceDate: stock.referenceDate,
+          rule: rule,
+          unitsPerPackage: stock.presentation.unitsPerPackage,
+          daysPerPackage: stock.presentation.daysPerPackage ?? null,
+        }).current
+      : null
 
     // Divergência: quantidade informada difere do teórico em mais de 1 unidade
     const divergenceDetected =

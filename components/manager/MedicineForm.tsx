@@ -31,6 +31,7 @@ const EMPTY: MedicineFormData = {
   dosage: "",
   form: "COMPRIMIDO",
   unitsPerPackage: 30,
+  daysPerPackage: null,
   unitsPerDose: 1,
   dosesPerDay: 1,
 }
@@ -191,34 +192,54 @@ export default function MedicineForm({
               <Divider />
               <div>
                 <Text size="xs" fw={600} tt="uppercase" c="dimmed" mb="xs">Consumo</Text>
-                <Grid>
-                  <Grid.Col span={6}>
-                    <NumberInput
-                      label={data.form === "COTIRIO" ? "Aplicações por dia" : "Doses por dia"}
-                      min={0.5}
-                      step={0.5}
-                      value={data.dosesPerDay}
-                      onChange={(v) => set("dosesPerDay", Number(v))}
-                    />
-                  </Grid.Col>
-                  <Grid.Col span={6}>
-                    <NumberInput
-                      label={data.form === "COTIRIO" ? "Frascos por aplicação" : "Unidades por dose"}
-                      min={0.001}
-                      step={data.form === "COTIRIO" ? 0.01 : 0.5}
-                      decimalScale={data.form === "COTIRIO" ? 3 : 1}
-                      fixedDecimalScale={false}
-                      value={data.unitsPerDose}
-                      onChange={(v) => set("unitsPerDose", Number(v))}
-                    />
-                  </Grid.Col>
-                </Grid>
-                <Text size="xs" c="dimmed" mt="xs">
-                  {data.form === "COTIRIO"
-                    ? <>Consumo diário: <strong>{(data.dosesPerDay * data.unitsPerDose).toFixed(3)} frasco(s)/dia</strong></>
-                    : <>Consumo diário: <strong>{(data.dosesPerDay * data.unitsPerDose).toFixed(1)} unidade(s)/dia</strong></>
-                  }
-                </Text>
+
+                <NumberInput
+                  label="Duração estimada por embalagem (dias)"
+                  description="Use para colírios, cremes, pomadas etc. — quando não dá pra contar unidades. Deixe em branco pra usar doses/dia. Uma margem de 10% é aplicada automaticamente."
+                  placeholder="Ex: 30"
+                  min={1}
+                  value={data.daysPerPackage ?? ""}
+                  onChange={(v) => set("daysPerPackage", v === "" ? null : Number(v))}
+                  mb="sm"
+                />
+
+                {data.daysPerPackage ? (
+                  <Text size="xs" c="dimmed">
+                    Cada embalagem ({data.unitsPerPackage} un.) dura ~<strong>{data.daysPerPackage} dias</strong>.
+                    O app calcula considerando ~<strong>{Math.round(data.daysPerPackage * 0.9)} dias</strong> (margem de segurança de 10%).
+                  </Text>
+                ) : (
+                  <>
+                    <Grid>
+                      <Grid.Col span={6}>
+                        <NumberInput
+                          label={data.form === "COTIRIO" ? "Aplicações por dia" : "Doses por dia"}
+                          min={0.5}
+                          step={0.5}
+                          value={data.dosesPerDay}
+                          onChange={(v) => set("dosesPerDay", Number(v))}
+                        />
+                      </Grid.Col>
+                      <Grid.Col span={6}>
+                        <NumberInput
+                          label={data.form === "COTIRIO" ? "Frascos por aplicação" : "Unidades por dose"}
+                          min={0.001}
+                          step={data.form === "COTIRIO" ? 0.01 : 0.5}
+                          decimalScale={data.form === "COTIRIO" ? 3 : 1}
+                          fixedDecimalScale={false}
+                          value={data.unitsPerDose}
+                          onChange={(v) => set("unitsPerDose", Number(v))}
+                        />
+                      </Grid.Col>
+                    </Grid>
+                    <Text size="xs" c="dimmed" mt="xs">
+                      {data.form === "COTIRIO"
+                        ? <>Consumo diário: <strong>{(data.dosesPerDay * data.unitsPerDose).toFixed(3)} frasco(s)/dia</strong></>
+                        : <>Consumo diário: <strong>{(data.dosesPerDay * data.unitsPerDose).toFixed(1)} unidade(s)/dia</strong></>
+                      }
+                    </Text>
+                  </>
+                )}
               </div>
             </>
           )}

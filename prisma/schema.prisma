@@ -150,6 +150,7 @@ model MedicationPresentation {
   dosage             String?
   form               MedicationForm @default(COMPRIMIDO)
   unitsPerPackage    Int
+  daysPerPackage     Int?
   packageDescription String?
   isPreferred        Boolean        @default(false)
 

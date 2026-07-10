@@ -26,6 +26,7 @@ function toFormData(med: Medicine): MedicineFormData {
     dosage: pres?.dosage ?? "",
     form: (pres?.form ?? "COMPRIMIDO") as MedicineFormData["form"],
     unitsPerPackage: pres?.unitsPerPackage ?? 30,
+    daysPerPackage: pres?.daysPerPackage ?? null,
     unitsPerDose: rule ? Number(rule.unitsPerDose) : 1,
     dosesPerDay: rule ? Number(rule.dosesPerDay) : 1,
   }
