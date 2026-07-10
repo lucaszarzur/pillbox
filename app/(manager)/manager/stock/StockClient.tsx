@@ -107,7 +107,14 @@ function HistoryModal({ stockId, medName, onClose }: { stockId: string; medName:
   )
 }
 
-type AdjustTarget = { presentationId: string; medicationName: string; currentQty: number; unitsPerPackage: number }
+type AdjustTarget = {
+  presentationId: string
+  medicationName: string
+  currentQty: number
+  unitsPerPackage: number
+  daysPerPackage: number | null
+  form: string
+}
 type HistoryTarget = { stockId: string; medName: string }
 
 export default function StockClient({ medications }: { medications: Medication[] }) {
@@ -188,6 +195,8 @@ export default function StockClient({ medications }: { medications: Medication[]
                 medicationName: med.name,
                 currentQty: calc?.theoretical ?? Number(stock?.referenceQuantity ?? 0),
                 unitsPerPackage: pres.unitsPerPackage,
+                daysPerPackage: pres.daysPerPackage ?? null,
+                form: pres.form,
               })}
               disabled={!pres}
             >
