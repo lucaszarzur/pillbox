@@ -137,6 +137,67 @@ export async function createPurchase(
   return purchase.id
 }
 
+export async function updatePurchase(
+  purchaseId: string,
+  pharmacyId: string,
+  purchaseDate: string,
+  items: { presentationId: string; quantityPackages: number; unitPrice: number }[],
+  notes: string,
+  receivedDate: string | null
+) {
+  const session = await auth()
+  if (!session?.user?.id) throw new Error("Unauthorized")
+
+  const existing = await prisma.purchase.findUnique({
+    where: { id: purchaseId },
+    include: { items: { select: { id: true } } },
+  })
+  if (!existing) throw new Error("Compra não encontrada.")
+
+  const oldItemIds = existing.items.map((i) => i.id)
+  if (oldItemIds.length) {
+    await prisma.priceHistory.deleteMany({ where: { purchaseItemId: { in: oldItemIds } } })
+    await prisma.purchaseItem.deleteMany({ where: { id: { in: oldItemIds } } })
+  }
+
+  const received = receivedDate ? new Date(receivedDate) : null
+
+  await prisma.purchase.update({
+    where: { id: purchaseId },
+    data: {
+      status: received ? "COMPLETED" : "PLANNED",
+      purchaseDate: new Date(purchaseDate),
+      receivedDate: received,
+      notes: notes.trim() || null,
+      items: {
+        create: items.map((i) => ({
+          presentationId: i.presentationId,
+          pharmacyId,
+          quantityPackages: i.quantityPackages,
+          unitPrice: i.unitPrice,
+        })),
+      },
+    },
+  })
+
+  const newItems = await prisma.purchaseItem.findMany({ where: { purchaseId } })
+  for (const item of newItems) {
+    await prisma.priceHistory.create({
+      data: {
+        presentationId: item.presentationId,
+        pharmacyId,
+        pricePerPackage: item.unitPrice,
+        source: "PURCHASE",
+        purchaseItemId: item.id,
+      },
+    })
+  }
+
+  revalidatePath("/manager/purchases")
+  revalidatePath("/manager/stock")
+  revalidatePath("/manager/dashboard")
+}
+
 export async function markPurchaseReceived(purchaseId: string, receivedDate: string) {
   const session = await auth()
   if (!session?.user?.id) throw new Error("Unauthorized")

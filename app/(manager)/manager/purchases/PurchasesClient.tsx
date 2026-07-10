@@ -5,7 +5,7 @@ import {
   Stack, Title, Text, Button, Group, Table, Badge, NumberInput,
   Paper, Tabs, Select, Modal, TextInput, Textarea, Switch,
 } from "@mantine/core"
-import { createPurchase, deletePurchase, getPurchasePageData, markPurchaseReceived } from "./actions"
+import { createPurchase, deletePurchase, getPurchasePageData, markPurchaseReceived, updatePurchase } from "./actions"
 
 function todayISO() {
   const d = new Date()
@@ -54,17 +54,44 @@ interface PurchaseItem {
   unitPrice: number | ""
 }
 
-function NewPurchaseForm({ data, onSaved }: { data: Data; onSaved: () => void }) {
-  const [pharmacyId, setPharmacyId] = useState<string | null>(null)
-  const [date, setDate] = useState(() => todayISO())
-  const [alreadyReceived, setAlreadyReceived] = useState(false)
-  const [receivedDate, setReceivedDate] = useState(() => todayISO())
-  const [notes, setNotes] = useState("")
-  const [items, setItems] = useState<PurchaseItem[]>(
-    data.medications
+function isoToLocalDate(iso: string | null | undefined): string {
+  if (!iso) return todayISO()
+  const d = new Date(iso)
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, "0")
+  const dd = String(d.getDate()).padStart(2, "0")
+  return `${y}-${m}-${dd}`
+}
+
+function PurchaseForm({ data, onSaved, editing }: { data: Data; onSaved: () => void; editing?: Purchase | null }) {
+  const initialPharmacyId = editing?.items[0]?.pharmacy?.id ?? null
+  const [pharmacyId, setPharmacyId] = useState<string | null>(initialPharmacyId)
+  const [date, setDate] = useState(() => editing ? isoToLocalDate(editing.purchaseDate as string | null) : todayISO())
+  const [alreadyReceived, setAlreadyReceived] = useState(!!editing?.receivedDate)
+  const [receivedDate, setReceivedDate] = useState(() => editing?.receivedDate ? isoToLocalDate(editing.receivedDate as string) : todayISO())
+  const [notes, setNotes] = useState(editing?.notes ?? "")
+  const [items, setItems] = useState<PurchaseItem[]>(() => {
+    const editingMap = new Map<string, { qty: number; price: number }>()
+    if (editing) {
+      for (const it of editing.items) {
+        editingMap.set(it.presentation.id ?? "", {
+          qty: Number(it.quantityPackages),
+          price: Number(it.unitPrice),
+        })
+      }
+    }
+    return data.medications
       .filter((m: Data["medications"][number]) => m.presentations[0])
-      .map((m: Data["medications"][number]) => ({ presentationId: m.presentations[0].id, quantityPackages: "", unitPrice: "" }))
-  )
+      .map((m: Data["medications"][number]) => {
+        const pres = m.presentations[0]
+        const found = editingMap.get(pres.id)
+        return {
+          presentationId: pres.id,
+          quantityPackages: found ? found.qty : "" as const,
+          unitPrice: found ? found.price : "" as const,
+        }
+      })
+  })
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState("")
 
@@ -91,17 +118,17 @@ function NewPurchaseForm({ data, onSaved }: { data: Data; onSaved: () => void })
         receivedISO = `${ry}-${rm}-${rd}T${String(now.getHours()).padStart(2,"0")}:${String(now.getMinutes()).padStart(2,"0")}:${String(now.getSeconds()).padStart(2,"0")}`
       }
 
-      await createPurchase(
-        pharmacyId,
-        purchaseDateTime,
-        filledItems.map((i) => ({
-          presentationId: i.presentationId,
-          quantityPackages: Number(i.quantityPackages),
-          unitPrice: Number(i.unitPrice),
-        })),
-        notes,
-        receivedISO
-      )
+      const payload = filledItems.map((i) => ({
+        presentationId: i.presentationId,
+        quantityPackages: Number(i.quantityPackages),
+        unitPrice: Number(i.unitPrice),
+      }))
+
+      if (editing) {
+        await updatePurchase(editing.id, pharmacyId, purchaseDateTime, payload, notes, receivedISO)
+      } else {
+        await createPurchase(pharmacyId, purchaseDateTime, payload, notes, receivedISO)
+      }
       onSaved()
     } catch {
       setError("Erro ao salvar compra.")
@@ -222,20 +249,30 @@ function NewPurchaseForm({ data, onSaved }: { data: Data; onSaved: () => void })
 
       {error && <Text c="red" size="sm">{error}</Text>}
 
+      {editing && (
+        <Text size="xs" c="dimmed">
+          ⚠ Editar não reajusta o estoque automaticamente. Se mudou quantidades já recebidas, ajuste o estoque manualmente depois.
+        </Text>
+      )}
+
       <Group justify="flex-end">
-        <Button onClick={handleSave} loading={saving}>Registrar compra</Button>
+        <Button onClick={handleSave} loading={saving}>
+          {editing ? "Salvar alterações" : "Registrar compra"}
+        </Button>
       </Group>
     </Stack>
   )
 }
 
-function PurchaseHistory({ purchases }: { purchases: Purchase[] }) {
+function PurchaseHistory({ data }: { data: Data }) {
+  const purchases = data.purchases
   const [deleteId, setDeleteId] = useState<string | null>(null)
   const [deleting, setDeleting] = useState(false)
   const [receiveId, setReceiveId] = useState<string | null>(null)
   const [receiveDate, setReceiveDate] = useState(() => todayISO())
   const [receiving, setReceiving] = useState(false)
   const [receiveError, setReceiveError] = useState("")
+  const [editing, setEditing] = useState<Purchase | null>(null)
 
   async function handleDelete() {
     if (!deleteId) return
@@ -272,7 +309,7 @@ function PurchaseHistory({ purchases }: { purchases: Purchase[] }) {
   return (
     <>
       <Stack gap="md">
-        {purchases.map((p) => {
+        {purchases.map((p: Purchase) => {
           const date = p.purchaseDate
             ? new Date(p.purchaseDate).toLocaleDateString("pt-BR")
             : new Date(p.createdAt).toLocaleDateString("pt-BR")
@@ -309,6 +346,9 @@ function PurchaseHistory({ purchases }: { purchases: Purchase[] }) {
                       Marcar como recebida
                     </Button>
                   )}
+                  <Button size="xs" variant="subtle" onClick={() => setEditing(p)}>
+                    Editar
+                  </Button>
                   <Button size="xs" variant="subtle" color="red" onClick={() => setDeleteId(p.id)}>
                     Excluir
                   </Button>
@@ -345,6 +385,16 @@ function PurchaseHistory({ purchases }: { purchases: Purchase[] }) {
         </Group>
       </Modal>
 
+      <Modal opened={!!editing} onClose={() => setEditing(null)} title="Editar compra" size="xl" centered>
+        {editing && (
+          <PurchaseForm
+            data={data}
+            editing={editing}
+            onSaved={() => setEditing(null)}
+          />
+        )}
+      </Modal>
+
       <Modal opened={!!receiveId} onClose={() => setReceiveId(null)} title="Marcar como recebida" size="sm" centered>
         <Stack gap="md">
           <Text size="sm">Em qual data o pedido foi entregue?</Text>
@@ -378,7 +428,7 @@ export default function PurchasesClient({ data }: { data: Data }) {
         </Tabs.List>
 
         <Tabs.Panel value="new" pt="md">
-          <NewPurchaseForm
+          <PurchaseForm
             key={key}
             data={data}
             onSaved={() => { setKey((k) => k + 1); setTab("history") }}
@@ -386,7 +436,7 @@ export default function PurchasesClient({ data }: { data: Data }) {
         </Tabs.Panel>
 
         <Tabs.Panel value="history" pt="md">
-          <PurchaseHistory purchases={data.purchases} />
+          <PurchaseHistory data={data} />
         </Tabs.Panel>
       </Tabs>
     </Stack>
