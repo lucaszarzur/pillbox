@@ -4,7 +4,9 @@ import { useState } from "react"
 import {
   Stack, Title, Text, Button, Group, Table, Badge, NumberInput,
   Paper, Tabs, Select, Modal, TextInput, Textarea, Switch,
+  Popover, ActionIcon, Tooltip,
 } from "@mantine/core"
+import { IconCalculator } from "@tabler/icons-react"
 import { createPurchase, deletePurchase, getPurchasePageData, markPurchaseReceived, updatePurchase } from "./actions"
 
 function todayISO() {
@@ -52,6 +54,75 @@ interface PurchaseItem {
   presentationId: string
   quantityPackages: number | ""
   unitPrice: number | ""
+}
+
+function TotalPriceCalculator({
+  quantity,
+  onApply,
+}: {
+  quantity: number
+  onApply: (unitPrice: number) => void
+}) {
+  const [open, setOpen] = useState(false)
+  const [total, setTotal] = useState<number | "">("")
+
+  function handleApply() {
+    if (typeof total !== "number" || total <= 0 || quantity <= 0) return
+    onApply(total / quantity)
+    setOpen(false)
+    setTotal("")
+  }
+
+  const canApply = typeof total === "number" && total > 0 && quantity > 0
+  const preview = canApply ? (total / quantity) : null
+
+  return (
+    <Popover opened={open} onChange={setOpen} position="bottom-end" withArrow shadow="md" width={240} trapFocus>
+      <Popover.Target>
+        <Tooltip label="Calcular a partir do total" withArrow>
+          <ActionIcon
+            variant="subtle"
+            color="gray"
+            size="sm"
+            onClick={() => setOpen((o) => !o)}
+            aria-label="Calcular preço unitário"
+          >
+            <IconCalculator size={14} />
+          </ActionIcon>
+        </Tooltip>
+      </Popover.Target>
+      <Popover.Dropdown>
+        <Stack gap="xs">
+          <Text size="xs" c="dimmed">
+            {quantity > 0
+              ? `Divide o total por ${quantity} caixa(s) e preenche o preço unitário.`
+              : "Preencha a quantidade de caixas primeiro."}
+          </Text>
+          <NumberInput
+            size="xs"
+            min={0}
+            step={0.01}
+            decimalScale={2}
+            prefix="R$ "
+            placeholder="Total pago"
+            value={total}
+            onChange={(v) => setTotal(v === "" ? "" : Number(v))}
+            disabled={quantity <= 0}
+            autoFocus
+          />
+          {preview !== null && (
+            <Text size="xs" c="dimmed">
+              Unitário: <strong>R$ {preview.toFixed(2)}</strong>
+            </Text>
+          )}
+          <Group justify="flex-end" gap="xs">
+            <Button size="xs" variant="subtle" onClick={() => { setOpen(false); setTotal("") }}>Cancelar</Button>
+            <Button size="xs" disabled={!canApply} onClick={handleApply}>Aplicar</Button>
+          </Group>
+        </Stack>
+      </Popover.Dropdown>
+    </Popover>
+  )
 }
 
 function isoToLocalDate(iso: string | null | undefined): string {
@@ -208,17 +279,23 @@ function PurchaseForm({ data, onSaved, editing }: { data: Data; onSaved: () => v
                   />
                 </Table.Td>
                 <Table.Td>
-                  <NumberInput
-                    size="xs"
-                    min={0}
-                    step={0.01}
-                    decimalScale={2}
-                    prefix="R$ "
-                    placeholder="0,00"
-                    value={item.unitPrice}
-                    onChange={(v) => updateItem(pres.id, "unitPrice", v)}
-                    style={{ width: 130 }}
-                  />
+                  <Group gap={4} wrap="nowrap">
+                    <NumberInput
+                      size="xs"
+                      min={0}
+                      step={0.01}
+                      decimalScale={2}
+                      prefix="R$ "
+                      placeholder="0,00"
+                      value={item.unitPrice}
+                      onChange={(v) => updateItem(pres.id, "unitPrice", v)}
+                      style={{ width: 130 }}
+                    />
+                    <TotalPriceCalculator
+                      quantity={item.quantityPackages === "" ? 0 : Number(item.quantityPackages)}
+                      onApply={(unit) => updateItem(pres.id, "unitPrice", Number(unit.toFixed(2)))}
+                    />
+                  </Group>
                 </Table.Td>
                 <Table.Td>
                   <Text size="sm" c={subtotal ? "dark" : "dimmed"}>
