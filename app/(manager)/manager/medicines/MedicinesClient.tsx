@@ -7,6 +7,7 @@ import MedicineForm from "@/components/manager/MedicineForm"
 import { toggleMedicineActive, deleteMedicine } from "./actions"
 import { getMedicines } from "./actions"
 import type { MedicineFormData } from "./actions"
+import { calcCurrentStock } from "@/lib/stockCalc"
 
 type Medicine = Awaited<ReturnType<typeof getMedicines>>[number]
 
@@ -57,8 +58,15 @@ export default function MedicinesClient({ medicines }: { medicines: Medicine[] }
     const pres = med.presentations[0]
     const rule = pres?.consumptionRules[0]
     const stock = pres?.stock
-    const dailyConsumption = rule
-      ? Number(rule.unitsPerDose) * Number(rule.dosesPerDay)
+
+    const calc = stock && pres
+      ? calcCurrentStock({
+          referenceQuantity: stock.referenceQuantity,
+          referenceDate: stock.referenceDate,
+          rule: rule ?? null,
+          unitsPerPackage: pres.unitsPerPackage,
+          daysPerPackage: pres.daysPerPackage ?? null,
+        })
       : null
 
     return (
@@ -74,11 +82,11 @@ export default function MedicinesClient({ medicines }: { medicines: Medicine[] }
           </Badge>
         </Table.Td>
         <Table.Td>
-          <Text size="sm">{dailyConsumption != null ? `${dailyConsumption.toFixed(1)} un/dia` : "—"}</Text>
+          <Text size="sm">{calc && calc.dailyConsumption > 0 ? `${calc.dailyConsumption.toFixed(1)} un/dia` : "—"}</Text>
         </Table.Td>
         <Table.Td>
           <Text size="sm">
-            {stock != null ? `${Number(stock.referenceQuantity).toFixed(0)} un` : "—"}
+            {calc ? `${Math.round(calc.current)} un` : "—"}
           </Text>
         </Table.Td>
         <Table.Td>
