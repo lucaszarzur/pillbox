@@ -39,15 +39,20 @@ export default async function DashboardPage() {
         <Text fw={600} mb="md">Estoque por medicamento</Text>
         <Stack gap="xs">
           {stockList.length === 0 && <Text c="dimmed" size="sm">Nenhum medicamento com estoque configurado.</Text>}
-          {stockList.map((item: { name: string; days: number | null; status: string }) => (
+          {stockList.map((item: { name: string; days: number | null; status: string; occasional: boolean }) => (
             <Group key={item.name} justify="space-between">
               <Text size="sm">{item.name}</Text>
               <Badge
-                color={item.status === "critical" ? "red" : item.status === "attention" ? "yellow" : "green"}
+                color={
+                  item.days === null ? "gray"
+                  : item.status === "critical" ? "red"
+                  : item.status === "attention" ? "yellow"
+                  : "green"
+                }
                 variant="light"
                 size="sm"
               >
-                {item.days !== null ? `${item.days} dias` : "sem regra"}
+                {item.days !== null ? `${item.days} dias` : item.occasional ? "uso eventual" : "sem regra"}
               </Badge>
             </Group>
           ))}

@@ -30,7 +30,7 @@ export async function getDashboardData() {
 
   const now = Date.now()
   let critical = 0, attention = 0, ok = 0
-  const stockList: { name: string; days: number | null; status: "critical" | "attention" | "ok" }[] = []
+  const stockList: { name: string; days: number | null; status: "critical" | "attention" | "ok"; occasional: boolean }[] = []
 
   for (const med of medications) {
     const pres = med.presentations[0]
@@ -53,7 +53,13 @@ export async function getDashboardData() {
     else if (daysRemaining !== null && daysRemaining <= 30) { attention++; status = "attention" }
     else ok++
 
-    stockList.push({ name: med.name, days: daysRemaining ? Math.floor(daysRemaining) : null, status })
+    // 0 dias é um valor válido (zerado); só null significa "sem cálculo".
+    stockList.push({
+      name: med.name,
+      days: daysRemaining !== null ? Math.floor(daysRemaining) : null,
+      status,
+      occasional: med.category === "OCCASIONAL",
+    })
   }
 
   const lastConfirmation = await prisma.stockConfirmation.findFirst({
