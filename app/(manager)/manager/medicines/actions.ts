@@ -2,13 +2,14 @@
 
 import { revalidatePath } from "next/cache"
 import { prisma } from "@/lib/prisma/client"
-import { MedicationCategory, MedicationForm } from "@prisma/client"
+import { MedicationCategory, MedicationForm, SupplySource } from "@prisma/client"
 
 export type MedicineFormData = {
   name: string
   activeIngredient: string
   category: MedicationCategory
   requiresPrescription: boolean
+  supplySource: SupplySource
   notes: string
   brand: string
   dosage: string
@@ -26,6 +27,7 @@ export async function createMedicine(data: MedicineFormData) {
       activeIngredient: data.activeIngredient.trim() || null,
       category: data.category,
       requiresPrescription: data.requiresPrescription,
+      supplySource: data.supplySource,
       notes: data.notes.trim() || null,
       presentations: {
         create: {
@@ -75,6 +77,7 @@ export async function updateMedicine(id: string, data: MedicineFormData) {
       activeIngredient: data.activeIngredient.trim() || null,
       category: data.category,
       requiresPrescription: data.requiresPrescription,
+      supplySource: data.supplySource,
       notes: data.notes.trim() || null,
     },
   })

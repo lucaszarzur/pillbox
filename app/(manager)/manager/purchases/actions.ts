@@ -9,7 +9,14 @@ export async function getPurchasePageData() {
   const [pharmacies, medications, purchases] = await Promise.all([
     prisma.pharmacy.findMany({ where: { isActive: true }, orderBy: { priority: "asc" }, distinct: ["name"] }),
     prisma.medication.findMany({
-      where: { isActive: true },
+      // Também traz remédios que já aparecem em compras (do posto ou desativados),
+      // senão o item some do formulário ao editar uma compra antiga.
+      where: {
+        OR: [
+          { isActive: true, supplySource: "PURCHASE" },
+          { presentations: { some: { isPreferred: true, purchaseItems: { some: {} } } } },
+        ],
+      },
       orderBy: { name: "asc" },
       include: {
         presentations: {

@@ -22,6 +22,7 @@ function toFormData(med: Medicine): MedicineFormData {
     activeIngredient: med.activeIngredient ?? "",
     category: med.category,
     requiresPrescription: med.requiresPrescription,
+    supplySource: med.supplySource,
     notes: med.notes ?? "",
     brand: pres?.brand ?? "",
     dosage: pres?.dosage ?? "",
@@ -74,6 +75,9 @@ export default function MedicinesClient({ medicines }: { medicines: Medicine[] }
         <Table.Td>
           <Text fw={500} size="sm">{med.name}</Text>
           {med.activeIngredient && <Text size="xs" c="dimmed">{med.activeIngredient}</Text>}
+          {med.supplySource === "PUBLIC_HEALTH" && (
+            <Badge color="teal" variant="light" size="xs" mt={2}>Posto (SUS)</Badge>
+          )}
         </Table.Td>
         <Table.Td><Text size="sm">{pres?.dosage ?? "—"}</Text></Table.Td>
         <Table.Td>

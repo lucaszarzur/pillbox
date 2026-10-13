@@ -18,6 +18,11 @@ enum MedicationCategory {
   CONTROLLED
 }
 
+enum SupplySource {
+  PURCHASE
+  PUBLIC_HEALTH
+}
+
 enum MedicationForm {
   COMPRIMIDO
   CAPSULA
@@ -136,6 +141,7 @@ model Medication {
   activeIngredient     String?
   category             MedicationCategory @default(CONTINUOUS)
   requiresPrescription Boolean            @default(false)
+  supplySource         SupplySource       @default(PURCHASE)
   notes                String?
   isActive             Boolean            @default(true)
   createdAt            DateTime           @default(now())

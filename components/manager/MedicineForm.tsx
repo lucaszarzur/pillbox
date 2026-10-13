@@ -4,7 +4,7 @@ import { useState, useEffect } from "react"
 import { Modal, TextInput, Textarea, Select, NumberInput, Button, Stack, Group, Grid, Text, Divider, Switch, Tooltip } from "@mantine/core"
 import { IconInfoCircle } from "@tabler/icons-react"
 import { createMedicine, updateMedicine, type MedicineFormData } from "@/app/(manager)/manager/medicines/actions"
-import { MedicationCategory, MedicationForm } from "@prisma/client"
+import { MedicationCategory, MedicationForm, SupplySource } from "@prisma/client"
 
 function LabelWithHint({ label, hint }: { label: string; hint: string }) {
   return (
@@ -23,6 +23,11 @@ const CATEGORY_OPTIONS = [
   { value: "CONTROLLED", label: "Controlado" },
 ]
 
+const SUPPLY_OPTIONS = [
+  { value: "PURCHASE", label: "Compra em farmácia" },
+  { value: "PUBLIC_HEALTH", label: "Retira no posto (SUS)" },
+]
+
 const FORM_OPTIONS = [
   { value: "COMPRIMIDO", label: "Comprimido" },
   { value: "CAPSULA", label: "Cápsula" },
@@ -38,6 +43,7 @@ const EMPTY: MedicineFormData = {
   activeIngredient: "",
   category: "CONTINUOUS",
   requiresPrescription: false,
+  supplySource: "PURCHASE",
   notes: "",
   brand: "",
   dosage: "",
@@ -142,6 +148,17 @@ export default function MedicineForm({
                   </Stack>
                 </Grid.Col>
               </Grid>
+              <Select
+                label={
+                  <LabelWithHint
+                    label="Onde consegue"
+                    hint="Remédio retirado de graça no posto continua com controle de estoque e alerta, mas fica fora de compras e cotações."
+                  />
+                }
+                data={SUPPLY_OPTIONS}
+                value={data.supplySource}
+                onChange={(v) => set("supplySource", (v ?? "PURCHASE") as SupplySource)}
+              />
               <Textarea
                 label="Observações"
                 placeholder="Informações adicionais..."

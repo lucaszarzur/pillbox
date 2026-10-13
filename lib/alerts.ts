@@ -38,6 +38,9 @@ export async function generateAlerts() {
       now,
     })
 
+    // Remédio do posto não se compra: o alerta orienta a ir buscar.
+    const action = med.supplySource === "PUBLIC_HEALTH" ? " Buscar no posto." : ""
+
     // Alerta de estoque crítico (≤10 dias)
     if (daysRemaining !== null && daysRemaining <= 10) {
       const exists = await prisma.alert.findFirst({
@@ -49,7 +52,7 @@ export async function generateAlerts() {
             type: "CRITICAL",
             stockId: stock.id,
             presentationId: pres.id,
-            message: `${med.name}: estoque acaba em ~${Math.floor(daysRemaining)} dia(s).`,
+            message: `${med.name}: estoque acaba em ~${Math.floor(daysRemaining)} dia(s).${action}`,
           },
         })
       }
@@ -66,7 +69,7 @@ export async function generateAlerts() {
             type: "LOW_STOCK",
             stockId: stock.id,
             presentationId: pres.id,
-            message: `${med.name}: estoque para ~${Math.floor(daysRemaining)} dias.`,
+            message: `${med.name}: estoque para ~${Math.floor(daysRemaining)} dias.${action}`,
           },
         })
       }

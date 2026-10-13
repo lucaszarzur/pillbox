@@ -149,6 +149,9 @@ export default function StockClient({ medications }: { medications: Medication[]
         <Table.Td>
           <Text fw={500} size="sm">{med.name}</Text>
           <Text size="xs" c="dimmed">{pres?.dosage ?? "—"}</Text>
+          {med.supplySource === "PUBLIC_HEALTH" && (
+            <Badge color="teal" variant="light" size="xs" mt={2}>Posto (SUS)</Badge>
+          )}
         </Table.Td>
         <Table.Td>
           {calc ? (

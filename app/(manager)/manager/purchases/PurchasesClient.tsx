@@ -151,8 +151,13 @@ function PurchaseForm({ data, onSaved, editing }: { data: Data; onSaved: () => v
         })
       }
     }
+    // Compra nova lista só o que se compra; na edição, mantém os itens já lançados.
     return data.medications
-      .filter((m: Data["medications"][number]) => m.presentations[0])
+      .filter((m: Data["medications"][number]) => {
+        const pres = m.presentations[0]
+        if (!pres) return false
+        return (m.isActive && m.supplySource === "PURCHASE") || editingMap.has(pres.id)
+      })
       .map((m: Data["medications"][number]) => {
         const pres = m.presentations[0]
         const found = editingMap.get(pres.id)

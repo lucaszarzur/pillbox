@@ -8,7 +8,7 @@ export async function getQuotationPageData() {
   const [pharmacies, medications, quotations, priceHistory] = await Promise.all([
     prisma.pharmacy.findMany({ where: { isActive: true }, orderBy: { priority: "asc" }, distinct: ["name"] }),
     prisma.medication.findMany({
-      where: { isActive: true },
+      where: { isActive: true, supplySource: "PURCHASE" },
       orderBy: { name: "asc" },
       include: {
         presentations: {
