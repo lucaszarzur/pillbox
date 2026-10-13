@@ -21,7 +21,12 @@ export async function getQuotationPageData() {
       orderBy: { createdAt: "desc" },
       take: 10,
       include: {
-        items: { include: { pharmacy: { select: { name: true } } } },
+        items: {
+          include: {
+            pharmacy: { select: { name: true } },
+            presentation: { select: { id: true, dosage: true, medication: { select: { name: true } } } },
+          },
+        },
         _count: { select: { items: true } },
       },
     }),
@@ -64,38 +69,39 @@ export async function createQuotation(
   items: { presentationId: string; pharmacyId: string; pricePerPackage: number | null; inStock: boolean | null; notes: string }[]
 ) {
   const session = await auth()
-  if (!session?.user?.id) throw new Error("Unauthorized")
+  const userId = session?.user?.id
+  if (!userId) throw new Error("Unauthorized")
 
-  const quotation = await prisma.quotation.create({
-    data: {
-      createdById: session.user.id,
-      status: "COMPLETED",
-      completedAt: new Date(),
-      items: {
-        create: items.map((i) => ({
+  const quotation = await prisma.$transaction(async (tx) => {
+    const q = await tx.quotation.create({
+      data: { createdById: userId, status: "COMPLETED", completedAt: new Date() },
+    })
+    for (const i of items) {
+      const qi = await tx.quotationItem.create({
+        data: {
+          quotationId: q.id,
           presentationId: i.presentationId,
           pharmacyId: i.pharmacyId,
           pricePerPackage: i.pricePerPackage,
           inStock: i.inStock,
           notes: i.notes || null,
-        })),
-      },
-    },
-  })
-
-  // Save to price history
-  for (const item of items) {
-    if (item.pricePerPackage) {
-      await prisma.priceHistory.create({
-        data: {
-          presentationId: item.presentationId,
-          pharmacyId: item.pharmacyId,
-          pricePerPackage: item.pricePerPackage,
-          source: "QUOTATION",
         },
       })
+      // Liga ao item para que excluir a cotação também limpe o histórico de preço
+      if (i.pricePerPackage) {
+        await tx.priceHistory.create({
+          data: {
+            presentationId: i.presentationId,
+            pharmacyId: i.pharmacyId,
+            pricePerPackage: i.pricePerPackage,
+            source: "QUOTATION",
+            quotationItemId: qi.id,
+          },
+        })
+      }
     }
-  }
+    return q
+  })
 
   revalidatePath("/manager/quotation")
   return quotation.id

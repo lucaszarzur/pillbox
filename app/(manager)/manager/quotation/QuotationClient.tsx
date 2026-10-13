@@ -1,6 +1,7 @@
 "use client"
 
 import { useState } from "react"
+import { useMediaQuery } from "@mantine/hooks"
 import {
   Stack, Title, Text, Button, Group, Table, Badge,
   NumberInput, Paper, Tabs, Select, Anchor, Modal, Alert,
@@ -11,6 +12,20 @@ type Data = Awaited<ReturnType<typeof getQuotationPageData>>
 type Pharmacy = Data["pharmacies"][number]
 type Medication = Data["medications"][number]
 type Quotation = Data["quotations"][number]
+
+interface QuotationItemView {
+  id: string
+  pricePerPackage: string | null
+  kitPrice: string | null
+  kitQuantity: number | null
+  shippingEstimate: string | null
+  inStock: boolean | null
+  notes: string | null
+  pharmacy: { name: string }
+  presentation: { id: string; dosage: string; medication: { name: string } }
+}
+
+const brl = (v: number) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })
 
 function PriceBadge({ current, avg }: { current: number; avg: number | undefined }) {
   if (avg === undefined) return <span style={{ color: "var(--mantine-color-gray-5)", fontSize: 11 }}>sem histórico</span>
@@ -210,9 +225,111 @@ function QuotationForm({ medications, pharmacies, priceAvg, onSaved }: {
   )
 }
 
+function QuotationNotes({ notes }: { notes: string | null }) {
+  if (!notes) return <Text size="xs" c="dimmed">—</Text>
+  const parts = notes.split(" · ")
+  const links = parts.filter((p) => /^https?:\/\//.test(p))
+  const text = parts.filter((p) => !/^https?:\/\//.test(p))
+  return (
+    <Stack gap={2}>
+      {text.map((t, i) => (
+        <Text key={i} size="xs" c={i === 0 ? undefined : "dimmed"}>{t}</Text>
+      ))}
+      {links.map((l) => (
+        <Anchor key={l} href={l} target="_blank" rel="noopener noreferrer" size="xs">Abrir na loja ↗</Anchor>
+      ))}
+    </Stack>
+  )
+}
+
+function QuotationDetail({ quotation, onClose }: { quotation: Quotation; onClose: () => void }) {
+  const isMobile = useMediaQuery("(max-width: 48em)")
+  const items = quotation.items as QuotationItemView[]
+
+  const groups = new Map<string, { name: string; items: QuotationItemView[] }>()
+  for (const item of items) {
+    const name = `${item.presentation.medication.name} ${item.presentation.dosage}`.trim()
+    const g = groups.get(item.presentation.id) ?? { name, items: [] }
+    g.items.push(item)
+    groups.set(item.presentation.id, g)
+  }
+  const sorted = [...groups.values()]
+    .sort((a, b) => a.name.localeCompare(b.name, "pt-BR"))
+    .map((g) => ({
+      ...g,
+      // Sem estoque e sem preço vão para o fim
+      items: [...g.items].sort((a, b) => {
+        const rank = (i: QuotationItemView) => (i.inStock === false || !i.pricePerPackage ? 1 : 0)
+        return rank(a) - rank(b) || Number(a.pricePerPackage ?? Infinity) - Number(b.pricePerPackage ?? Infinity)
+      }),
+    }))
+
+  const date = new Date(quotation.createdAt).toLocaleDateString("pt-BR")
+
+  return (
+    <Modal opened onClose={onClose} title={`Cotação de ${date}`} size="xl" fullScreen={isMobile} centered>
+      <Stack gap="lg">
+        {sorted.map((g) => {
+          const best = g.items.find((i) => i.inStock !== false && i.pricePerPackage)
+          return (
+            <Paper key={g.name} withBorder p="md" radius="md">
+              <Group justify="space-between" mb="sm">
+                <Text fw={600}>{g.name}</Text>
+                {best && (
+                  <Badge color="green" variant="light" size="sm">
+                    Menor: {best.pharmacy.name} · {brl(Number(best.pricePerPackage))}
+                  </Badge>
+                )}
+              </Group>
+              <Table.ScrollContainer minWidth={560}>
+                <Table withTableBorder verticalSpacing="xs">
+                  <Table.Thead>
+                    <Table.Tr>
+                      <Table.Th>Farmácia</Table.Th>
+                      <Table.Th>Preço</Table.Th>
+                      <Table.Th>Frete (1 un.)</Table.Th>
+                      <Table.Th>Observações</Table.Th>
+                    </Table.Tr>
+                  </Table.Thead>
+                  <Table.Tbody>
+                    {g.items.map((i) => {
+                      const isBest = i.id === best?.id
+                      const ship = i.shippingEstimate === null ? null : Number(i.shippingEstimate)
+                      return (
+                        <Table.Tr key={i.id} bg={isBest ? "var(--mantine-color-green-light)" : undefined}>
+                          <Table.Td fw={500} style={{ whiteSpace: "nowrap" }}>{i.pharmacy.name}</Table.Td>
+                          <Table.Td style={{ whiteSpace: "nowrap" }}>
+                            <Text size="sm" fw={isBest ? 700 : 400} td={i.inStock === false ? "line-through" : undefined}>
+                              {i.pricePerPackage ? brl(Number(i.pricePerPackage)) : "—"}
+                            </Text>
+                            {i.kitPrice && i.kitQuantity && (
+                              <Text size="xs" c="dimmed">kit {i.kitQuantity} un. por {brl(Number(i.kitPrice))}</Text>
+                            )}
+                            {i.inStock === false && <Badge color="red" variant="light" size="xs">sem estoque</Badge>}
+                          </Table.Td>
+                          <Table.Td style={{ whiteSpace: "nowrap" }}>
+                            {ship === null ? <Text size="xs" c="dimmed">—</Text> : ship === 0 ? "grátis" : brl(ship)}
+                          </Table.Td>
+                          <Table.Td><QuotationNotes notes={i.notes} /></Table.Td>
+                        </Table.Tr>
+                      )
+                    })}
+                  </Table.Tbody>
+                </Table>
+              </Table.ScrollContainer>
+            </Paper>
+          )
+        })}
+      </Stack>
+    </Modal>
+  )
+}
+
 function QuotationHistory({ quotations }: { quotations: Quotation[] }) {
   const [deleteId, setDeleteId] = useState<string | null>(null)
   const [deleting, setDeleting] = useState(false)
+  const [viewId, setViewId] = useState<string | null>(null)
+  const viewing = quotations.find((q) => q.id === viewId)
 
   async function handleDelete() {
     if (!deleteId) return
@@ -237,18 +354,30 @@ function QuotationHistory({ quotations }: { quotations: Quotation[] }) {
           const prices = q.items.filter((i: { pricePerPackage: number | null }) => i.pricePerPackage)
           const minPrice = prices.length ? Math.min(...prices.map((i: { pricePerPackage: number | null }) => Number(i.pricePerPackage))) : null
           const maxPrice = prices.length ? Math.max(...prices.map((i: { pricePerPackage: number | null }) => Number(i.pricePerPackage))) : null
+          const items = q.items as QuotationItemView[]
+          const medNames = [...new Set(items.map((i) => i.presentation.medication.name))]
+          const pharmacyCount = new Set(items.map((i) => i.pharmacy.name)).size
 
           return (
             <Paper key={q.id} withBorder p="md" radius="md">
               <Group justify="space-between" mb="xs">
                 <div>
                   <Text fw={600} size="sm">{date}</Text>
-                  <Badge variant="light" size="sm">{q._count.items} item(s)</Badge>
+                  <Group gap={6}>
+                    <Badge variant="light" size="sm">{q._count.items} preço(s)</Badge>
+                    <Badge variant="light" color="gray" size="sm">{medNames.length} remédio(s) · {pharmacyCount} farmácia(s)</Badge>
+                  </Group>
                 </div>
-                <Button size="xs" variant="subtle" color="red" onClick={() => setDeleteId(q.id)}>
-                  Excluir
-                </Button>
+                <Group gap="xs">
+                  <Button size="xs" variant="light" onClick={() => setViewId(q.id)}>
+                    Ver cotação
+                  </Button>
+                  <Button size="xs" variant="subtle" color="red" onClick={() => setDeleteId(q.id)}>
+                    Excluir
+                  </Button>
+                </Group>
               </Group>
+              <Text size="xs" mb={4}>{medNames.join(", ")}</Text>
               {minPrice !== null && (
                 <Text size="xs" c="dimmed">
                   Faixa de preço: R$ {minPrice.toFixed(2)} – R$ {maxPrice?.toFixed(2)}
@@ -258,6 +387,8 @@ function QuotationHistory({ quotations }: { quotations: Quotation[] }) {
           )
         })}
       </Stack>
+
+      {viewing && <QuotationDetail quotation={viewing} onClose={() => setViewId(null)} />}
 
       <Modal opened={!!deleteId} onClose={() => setDeleteId(null)} title="Excluir cotação" size="sm" centered>
         <Text size="sm" mb="md">Tem certeza que deseja excluir esta cotação?</Text>
