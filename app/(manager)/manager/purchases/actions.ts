@@ -34,54 +34,85 @@ export async function getPurchasePageData() {
   return JSON.parse(JSON.stringify({ pharmacies, medications, purchases }))
 }
 
+type PurchaseItemUnits = {
+  presentationId: string
+  quantityPackages: number
+  presentation: { unitsPerPackage: number }
+}
+
+function unitsByPresentation(items: PurchaseItemUnits[], sign = 1) {
+  const deltas = new Map<string, number>()
+  for (const item of items) {
+    const units = item.quantityPackages * item.presentation.unitsPerPackage * sign
+    deltas.set(item.presentationId, (deltas.get(item.presentationId) ?? 0) + units)
+  }
+  return deltas
+}
+
+// Soma (delta > 0) ou estorna (delta < 0) unidades de uma compra no estoque.
+// A data efetiva é a mais recente entre o recebimento e a referência atual, então
+// uma compra retroativa nunca puxa a referenceDate para trás. Se houve contagem
+// manual/confirmação depois do recebimento, ela já reflete a compra e nada muda.
+async function applyStockDeltas(deltas: Map<string, number>, eventDate: Date, userId: string) {
+  for (const [presentationId, delta] of deltas) {
+    if (delta === 0) continue
+
+    const pres = await prisma.medicationPresentation.findUnique({ where: { id: presentationId } })
+    if (!pres) continue
+
+    const existingStock = await prisma.stock.findUnique({ where: { presentationId } })
+
+    if (!existingStock) {
+      if (delta > 0) {
+        await prisma.stock.create({
+          data: {
+            presentationId,
+            referenceQuantity: delta,
+            referenceDate: eventDate,
+            referenceType: "PURCHASE",
+            confidence: "HIGH",
+            adjustedById: userId,
+          },
+        })
+      }
+      continue
+    }
+
+    const referenceDate = new Date(existingStock.referenceDate)
+    if (eventDate < referenceDate && existingStock.referenceType !== "PURCHASE") continue
+
+    const effectiveDate = eventDate > referenceDate ? eventDate : referenceDate
+    const rule = await prisma.consumptionRule.findFirst({
+      where: { presentationId, validUntil: null },
+    })
+    const { current } = calcCurrentStock({
+      referenceQuantity: existingStock.referenceQuantity,
+      referenceDate: existingStock.referenceDate,
+      rule,
+      unitsPerPackage: pres.unitsPerPackage,
+      daysPerPackage: pres.daysPerPackage ?? null,
+      now: effectiveDate,
+    })
+
+    await prisma.stock.update({
+      where: { presentationId },
+      data: {
+        referenceQuantity: Math.max(0, current + delta),
+        referenceDate: effectiveDate,
+        referenceType: "PURCHASE",
+        ...(delta > 0 ? { confidence: "HIGH" as const } : {}),
+        adjustedById: userId,
+      },
+    })
+  }
+}
+
 async function applyPurchaseToStock(purchaseId: string, receivedDate: Date, userId: string) {
   const items = await prisma.purchaseItem.findMany({
     where: { purchaseId },
-    include: { presentation: true },
+    include: { presentation: { select: { unitsPerPackage: true } } },
   })
-
-  for (const item of items) {
-    const pres = item.presentation
-    const unitsAdded = item.quantityPackages * pres.unitsPerPackage
-
-    const existingStock = await prisma.stock.findUnique({ where: { presentationId: pres.id } })
-    const rule = await prisma.consumptionRule.findFirst({
-      where: { presentationId: pres.id, validUntil: null },
-    })
-
-    if (existingStock) {
-      const { current } = calcCurrentStock({
-        referenceQuantity: existingStock.referenceQuantity,
-        referenceDate: existingStock.referenceDate,
-        rule,
-        unitsPerPackage: pres.unitsPerPackage,
-        daysPerPackage: pres.daysPerPackage ?? null,
-        now: receivedDate,
-      })
-
-      await prisma.stock.update({
-        where: { presentationId: pres.id },
-        data: {
-          referenceQuantity: current + unitsAdded,
-          referenceDate: receivedDate,
-          referenceType: "PURCHASE",
-          confidence: "HIGH",
-          adjustedById: userId,
-        },
-      })
-    } else {
-      await prisma.stock.create({
-        data: {
-          presentationId: pres.id,
-          referenceQuantity: unitsAdded,
-          referenceDate: receivedDate,
-          referenceType: "PURCHASE",
-          confidence: "HIGH",
-          adjustedById: userId,
-        },
-      })
-    }
-  }
+  await applyStockDeltas(unitsByPresentation(items), receivedDate, userId)
 }
 
 export async function createPurchase(
@@ -150,9 +181,12 @@ export async function updatePurchase(
 
   const existing = await prisma.purchase.findUnique({
     where: { id: purchaseId },
-    include: { items: { select: { id: true } } },
+    include: { items: { include: { presentation: { select: { unitsPerPackage: true } } } } },
   })
   if (!existing) throw new Error("Compra não encontrada.")
+
+  // Só o que já entrou no estoque conta como "antes": compra PLANNED não somou nada.
+  const oldApplied = existing.status === "COMPLETED" ? unitsByPresentation(existing.items) : new Map<string, number>()
 
   const oldItemIds = existing.items.map((i) => i.id)
   if (oldItemIds.length) {
@@ -180,7 +214,10 @@ export async function updatePurchase(
     },
   })
 
-  const newItems = await prisma.purchaseItem.findMany({ where: { purchaseId } })
+  const newItems = await prisma.purchaseItem.findMany({
+    where: { purchaseId },
+    include: { presentation: { select: { unitsPerPackage: true } } },
+  })
   for (const item of newItems) {
     await prisma.priceHistory.create({
       data: {
@@ -193,6 +230,17 @@ export async function updatePurchase(
     })
   }
 
+  // Aplica só a diferença entre o que estava no estoque e o novo lançamento:
+  // editar preço não mexe no estoque, e tirar o recebimento estorna as unidades.
+  const deltas = received ? unitsByPresentation(newItems) : new Map<string, number>()
+  for (const [presentationId, units] of oldApplied) {
+    deltas.set(presentationId, (deltas.get(presentationId) ?? 0) - units)
+  }
+  const eventDate = received ?? existing.receivedDate
+  if (eventDate) {
+    await applyStockDeltas(deltas, eventDate, session.user.id)
+  }
+
   revalidatePath("/manager/purchases")
   revalidatePath("/manager/stock")
   revalidatePath("/manager/dashboard")
@@ -202,16 +250,17 @@ export async function markPurchaseReceived(purchaseId: string, receivedDate: str
   const session = await auth()
   if (!session?.user?.id) throw new Error("Unauthorized")
 
-  const purchase = await prisma.purchase.findUnique({ where: { id: purchaseId } })
-  if (!purchase) throw new Error("Compra não encontrada.")
-  if (purchase.status === "COMPLETED") throw new Error("Compra já marcada como recebida.")
-
   const received = new Date(receivedDate)
 
-  await prisma.purchase.update({
-    where: { id: purchaseId },
+  // updateMany condicional para que dois cliques simultâneos não somem a compra duas vezes.
+  const { count } = await prisma.purchase.updateMany({
+    where: { id: purchaseId, status: { not: "COMPLETED" } },
     data: { status: "COMPLETED", receivedDate: received },
   })
+  if (count === 0) {
+    const exists = await prisma.purchase.findUnique({ where: { id: purchaseId }, select: { id: true } })
+    throw new Error(exists ? "Compra já marcada como recebida." : "Compra não encontrada.")
+  }
 
   await applyPurchaseToStock(purchaseId, received, session.user.id)
 
@@ -221,12 +270,25 @@ export async function markPurchaseReceived(purchaseId: string, receivedDate: str
 }
 
 export async function deletePurchase(id: string) {
-  const items = await prisma.purchaseItem.findMany({ where: { purchaseId: id }, select: { id: true } })
-  const itemIds = items.map((i) => i.id)
+  const session = await auth()
+  if (!session?.user?.id) throw new Error("Unauthorized")
+
+  const purchase = await prisma.purchase.findUnique({
+    where: { id },
+    include: { items: { include: { presentation: { select: { unitsPerPackage: true } } } } },
+  })
+  if (!purchase) throw new Error("Compra não encontrada.")
+
+  const itemIds = purchase.items.map((i) => i.id)
   if (itemIds.length) {
     await prisma.priceHistory.deleteMany({ where: { purchaseItemId: { in: itemIds } } })
   }
   await prisma.purchase.delete({ where: { id } })
+
+  // Compra recebida já somou no estoque: apagar precisa estornar as unidades.
+  if (purchase.status === "COMPLETED" && purchase.receivedDate) {
+    await applyStockDeltas(unitsByPresentation(purchase.items, -1), purchase.receivedDate, session.user.id)
+  }
   revalidatePath("/manager/purchases")
   revalidatePath("/manager/stock")
   revalidatePath("/manager/dashboard")
