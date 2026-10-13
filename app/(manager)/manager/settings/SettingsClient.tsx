@@ -6,7 +6,7 @@ import {
   Paper, Tabs, Table, Switch, NumberInput, Divider,
 } from "@mantine/core"
 import {
-  changePassword, changeMomPassword, updateMomName, updatePharmacy, getSettingsData,
+  changePassword, changeMomPassword, updateMomName, updatePharmacy, updatePostalCode, getSettingsData,
 } from "./actions"
 
 type Data = Awaited<ReturnType<typeof getSettingsData>>
@@ -101,16 +101,35 @@ function MomSettingsForm({ users }: { users: Data["users"] }) {
   )
 }
 
+const toNumberOrNull = (v: string | number) => (v === "" || v === null ? null : Number(v))
+
 function PharmacyRow({ ph }: { ph: Pharmacy }) {
   const [template, setTemplate] = useState(ph.searchUrlTemplate)
   const [priority, setPriority] = useState(ph.priority)
   const [active, setActive] = useState(ph.isActive)
+  const [shippingCost, setShippingCost] = useState<string | number>(ph.shippingCost === null ? "" : Number(ph.shippingCost))
+  const [freeShippingMin, setFreeShippingMin] = useState<string | number>(ph.freeShippingMin === null ? "" : Number(ph.freeShippingMin))
+  const [deliveryDays, setDeliveryDays] = useState<string | number>(ph.deliveryDays ?? "")
+  const [pickup, setPickup] = useState<boolean>(ph.pickupAvailable)
+  const [pickupNotes, setPickupNotes] = useState(ph.pickupNotes ?? "")
+  const [vtexHost, setVtexHost] = useState(ph.vtexHost ?? "")
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
 
   async function save() {
     setSaving(true)
-    await updatePharmacy(ph.id, { name: ph.name, searchUrlTemplate: template, priority, isActive: active })
+    await updatePharmacy(ph.id, {
+      name: ph.name,
+      searchUrlTemplate: template,
+      priority,
+      isActive: active,
+      shippingCost: toNumberOrNull(shippingCost),
+      freeShippingMin: toNumberOrNull(freeShippingMin),
+      deliveryDays: toNumberOrNull(deliveryDays),
+      pickupAvailable: pickup,
+      pickupNotes,
+      vtexHost,
+    })
     setSaving(false); setSaved(true)
     setTimeout(() => setSaved(false), 2000)
   }
@@ -119,11 +138,29 @@ function PharmacyRow({ ph }: { ph: Pharmacy }) {
     <Table.Tr>
       <Table.Td><Text size="sm" fw={500}>{ph.name}</Text></Table.Td>
       <Table.Td>
+        <NumberInput size="xs" min={0} decimalScale={2} fixedDecimalScale decimalSeparator="," thousandSeparator="." prefix="R$ " placeholder="sem entrega" value={shippingCost} onChange={setShippingCost} style={{ width: 110 }} />
+      </Table.Td>
+      <Table.Td>
+        <NumberInput size="xs" min={0} decimalScale={2} fixedDecimalScale decimalSeparator="," thousandSeparator="." prefix="R$ " placeholder="—" value={freeShippingMin} onChange={setFreeShippingMin} style={{ width: 110 }} />
+      </Table.Td>
+      <Table.Td>
+        <NumberInput size="xs" min={0} max={60} placeholder="—" value={deliveryDays} onChange={setDeliveryDays} style={{ width: 70 }} />
+      </Table.Td>
+      <Table.Td>
+        <Group gap={6} wrap="nowrap">
+          <Switch checked={pickup} onChange={(e) => setPickup(e.currentTarget.checked)} />
+          <TextInput size="xs" placeholder="onde / tempo" value={pickupNotes} onChange={(e) => setPickupNotes(e.target.value)} disabled={!pickup} style={{ width: 150 }} />
+        </Group>
+      </Table.Td>
+      <Table.Td>
+        <TextInput size="xs" placeholder="www.loja.com.br" value={vtexHost} onChange={(e) => setVtexHost(e.target.value)} style={{ width: 200 }} />
+      </Table.Td>
+      <Table.Td>
         <TextInput
           size="xs"
           value={template}
           onChange={(e) => setTemplate(e.target.value)}
-          style={{ minWidth: 320 }}
+          style={{ minWidth: 260 }}
         />
       </Table.Td>
       <Table.Td>
@@ -141,15 +178,51 @@ function PharmacyRow({ ph }: { ph: Pharmacy }) {
   )
 }
 
+function PostalCodeForm({ initial }: { initial: string }) {
+  const [cep, setCep] = useState(initial)
+  const [saving, setSaving] = useState(false)
+  const [msg, setMsg] = useState<{ type: "ok" | "err"; text: string } | null>(null)
+
+  async function save(e: React.FormEvent) {
+    e.preventDefault()
+    setSaving(true); setMsg(null)
+    try {
+      await updatePostalCode(cep)
+      setMsg({ type: "ok", text: "CEP salvo." })
+    } catch (err: unknown) {
+      setMsg({ type: "err", text: err instanceof Error ? err.message : "Erro ao salvar." })
+    } finally { setSaving(false) }
+  }
+
+  return (
+    <Paper withBorder p="md" radius="md">
+      <Text fw={600} mb={4}>Entrega</Text>
+      <Text size="xs" c="dimmed" mb="sm">CEP usado para simular frete e prazo na cotação automática.</Text>
+      <form onSubmit={save}>
+        <Group align="flex-end" gap="sm">
+          <TextInput label="CEP" value={cep} onChange={(e) => setCep(e.target.value)} placeholder="00000-000" w={140} />
+          <Button type="submit" loading={saving} size="sm">Salvar</Button>
+          {msg && <Text c={msg.type === "ok" ? "green" : "red"} size="sm">{msg.text}</Text>}
+        </Group>
+      </form>
+    </Paper>
+  )
+}
+
 function PharmaciesForm({ pharmacies }: { pharmacies: Pharmacy[] }) {
   return (
     <Paper withBorder p="md" radius="md">
       <Text fw={600} mb="md">Farmácias</Text>
-      <Table.ScrollContainer minWidth={600}>
+      <Table.ScrollContainer minWidth={1350}>
         <Table withTableBorder>
           <Table.Thead>
             <Table.Tr>
               <Table.Th>Nome</Table.Th>
+              <Table.Th>Frete</Table.Th>
+              <Table.Th>Grátis a partir de</Table.Th>
+              <Table.Th>Prazo (dias)</Table.Th>
+              <Table.Th>Retirada perto de casa</Table.Th>
+              <Table.Th>Host VTEX</Table.Th>
               <Table.Th>URL de busca</Table.Th>
               <Table.Th>Ordem</Table.Th>
               <Table.Th>Ativa</Table.Th>
@@ -161,7 +234,13 @@ function PharmaciesForm({ pharmacies }: { pharmacies: Pharmacy[] }) {
           </Table.Tbody>
         </Table>
       </Table.ScrollContainer>
-      <Text size="xs" c="dimmed" mt="sm">Use {"{query}"} para termo codificado e {"{slug}"} para formato com hífens (ex: CallFarma).</Text>
+      <Stack gap={4} mt="sm">
+        <Text size="xs" c="dimmed">
+          <b>Frete</b> vazio = não entrega (ou não sabemos); a farmácia só entra na Melhor compra se tiver retirada ou frete informado na cotação.
+          {" "}<b>Host VTEX</b> habilita a cotação automática (ex: www.drogariaspacheco.com.br).
+        </Text>
+        <Text size="xs" c="dimmed">URL de busca: use {"{query}"} para termo codificado e {"{slug}"} para formato com hífens (ex: CallFarma).</Text>
+      </Stack>
     </Paper>
   )
 }
@@ -188,7 +267,10 @@ export default function SettingsClient({ data }: { data: Data }) {
         </Tabs.Panel>
 
         <Tabs.Panel value="pharmacies" pt="md">
-          <PharmaciesForm pharmacies={data.pharmacies} />
+          <Stack gap="md">
+            <PostalCodeForm initial={data.postalCode} />
+            <PharmaciesForm pharmacies={data.pharmacies} />
+          </Stack>
         </Tabs.Panel>
       </Tabs>
     </Stack>

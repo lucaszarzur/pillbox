@@ -7,6 +7,9 @@ import {
   NumberInput, Paper, Tabs, Select, Anchor, Modal, Alert,
 } from "@mantine/core"
 import { createQuotation, deleteQuotation, getQuotationPageData } from "./actions"
+import { getAutoQuoteData, getBestBuyData } from "./bestBuyActions"
+import BestBuyPanel from "./BestBuyPanel"
+import AutoQuotePanel from "./AutoQuotePanel"
 
 type Data = Awaited<ReturnType<typeof getQuotationPageData>>
 type Pharmacy = Data["pharmacies"][number]
@@ -401,8 +404,12 @@ function QuotationHistory({ quotations }: { quotations: Quotation[] }) {
   )
 }
 
-export default function QuotationClient({ data }: { data: Data }) {
-  const [tab, setTab] = useState<string | null>("new")
+export default function QuotationClient({ data, bestBuy, autoQuote }: {
+  data: Data
+  bestBuy: Awaited<ReturnType<typeof getBestBuyData>>
+  autoQuote: Awaited<ReturnType<typeof getAutoQuoteData>>
+}) {
+  const [tab, setTab] = useState<string | null>("best")
   const [key, setKey] = useState(0)
 
   return (
@@ -410,15 +417,26 @@ export default function QuotationClient({ data }: { data: Data }) {
       <Group justify="space-between" align="flex-end">
         <div>
           <Title order={2}>Cotação</Title>
-          <Text c="dimmed" size="sm">Compare preços entre farmácias</Text>
+          <Text c="dimmed" size="sm">Compare preços e descubra onde comprar mais barato</Text>
         </div>
       </Group>
 
       <Tabs value={tab} onChange={setTab}>
         <Tabs.List>
-          <Tabs.Tab value="new">Nova cotação</Tabs.Tab>
+          <Tabs.Tab value="best">Melhor compra</Tabs.Tab>
+          <Tabs.Tab value="auto">Cotar automaticamente</Tabs.Tab>
+          <Tabs.Tab value="new">Cotação manual</Tabs.Tab>
           <Tabs.Tab value="history">Histórico</Tabs.Tab>
         </Tabs.List>
+
+        <Tabs.Panel value="best" pt="md">
+          {/* Remonta quando chega cotação nova, para recalcular com os preços novos */}
+          <BestBuyPanel key={`${data.quotations[0]?.id ?? "none"}:${bestBuy.offers.length}`} initial={bestBuy} />
+        </Tabs.Panel>
+
+        <Tabs.Panel value="auto" pt="md">
+          <AutoQuotePanel data={autoQuote} onQuoted={() => setTab("best")} />
+        </Tabs.Panel>
 
         <Tabs.Panel value="new" pt="md">
           <QuotationForm

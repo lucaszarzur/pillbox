@@ -88,19 +88,19 @@ enum AttachmentEntity {
 // ─────────────────────────────────────────────
 
 model User {
-  id         String   @id @default(cuid())
-  email      String   @unique
-  name       String
-  role       Role
-  password   String
-  avatarUrl  String?
-  createdAt  DateTime @default(now())
+  id        String   @id @default(cuid())
+  email     String   @unique
+  name      String
+  role      Role
+  password  String
+  avatarUrl String?
+  createdAt DateTime @default(now())
 
-  profile               Profile?
-  stockConfirmations    StockConfirmation[]
-  purchasesCreated      Purchase[]
-  quotationsCreated     Quotation[]
-  stockAdjustments      Stock[]             @relation("StockAdjustedBy")
+  profile            Profile?
+  stockConfirmations StockConfirmation[]
+  purchasesCreated   Purchase[]
+  quotationsCreated  Quotation[]
+  stockAdjustments   Stock[]             @relation("StockAdjustedBy")
 }
 
 model Profile {
@@ -126,9 +126,40 @@ model Pharmacy {
   isActive          Boolean @default(true)
   notes             String?
 
+  // Regras de frete usadas pelo comparador "Melhor compra"
+  shippingCost    Decimal? @db.Decimal(10, 2) // frete padrão do pedido; null = sem entrega/desconhecido
+  freeShippingMin Decimal? @db.Decimal(10, 2) // subtotal a partir do qual o frete é grátis
+  deliveryDays    Int? // prazo de entrega em dias úteis
+  pickupAvailable Boolean  @default(false) // dá para retirar em loja perto de casa
+  pickupNotes     String? // ex: "PP Colombo, 30 min"
+  vtexHost        String? // ex: www.drogariaspacheco.com.br — habilita cotação automática
+
   quotationItems QuotationItem[]
   purchaseItems  PurchaseItem[]
   priceHistory   PriceHistory[]
+  products       PharmacyProduct[]
+}
+
+// Produto confirmado de uma apresentação numa loja VTEX (usado na cotação automática)
+model PharmacyProduct {
+  id             String   @id @default(uuid())
+  presentationId String
+  pharmacyId     String
+  sku            String
+  seller         String   @default("1")
+  productName    String
+  url            String
+  updatedAt      DateTime @updatedAt
+
+  presentation MedicationPresentation @relation(fields: [presentationId], references: [id], onDelete: Cascade)
+  pharmacy     Pharmacy               @relation(fields: [pharmacyId], references: [id], onDelete: Cascade)
+
+  @@unique([presentationId, pharmacyId])
+}
+
+model AppSetting {
+  key   String @id
+  value String
 }
 
 // ─────────────────────────────────────────────
@@ -167,15 +198,16 @@ model MedicationPresentation {
   purchaseItems    PurchaseItem[]
   priceHistory     PriceHistory[]
   alerts           Alert[]
+  pharmacyProducts PharmacyProduct[]
 }
 
 model ConsumptionRule {
-  id             String   @id @default(uuid())
+  id             String    @id @default(uuid())
   presentationId String
-  unitsPerDose   Decimal  @db.Decimal(6, 2)
-  dosesPerDay    Decimal  @db.Decimal(6, 2)
+  unitsPerDose   Decimal   @db.Decimal(6, 2)
+  dosesPerDay    Decimal   @db.Decimal(6, 2)
   daysOfWeek     Int[]
-  validFrom      DateTime @default(now())
+  validFrom      DateTime  @default(now())
   validUntil     DateTime?
   notes          String?
 
@@ -196,10 +228,10 @@ model Stock {
   adjustedById      String?
   updatedAt         DateTime             @updatedAt
 
-  presentation   MedicationPresentation @relation(fields: [presentationId], references: [id], onDelete: Cascade)
-  adjustedBy     User?                  @relation("StockAdjustedBy", fields: [adjustedById], references: [id])
-  confirmations  StockConfirmation[]
-  alerts         Alert[]
+  presentation  MedicationPresentation @relation(fields: [presentationId], references: [id], onDelete: Cascade)
+  adjustedBy    User?                  @relation("StockAdjustedBy", fields: [adjustedById], references: [id])
+  confirmations StockConfirmation[]
+  alerts        Alert[]
 }
 
 model StockConfirmation {
@@ -222,13 +254,13 @@ model StockConfirmation {
 // ─────────────────────────────────────────────
 
 model Purchase {
-  id           String        @id @default(uuid())
+  id           String         @id @default(uuid())
   createdById  String
   status       PurchaseStatus @default(PLANNED)
   purchaseDate DateTime?
   receivedDate DateTime?
   notes        String?
-  createdAt    DateTime      @default(now())
+  createdAt    DateTime       @default(now())
 
   createdBy   User           @relation(fields: [createdById], references: [id])
   items       PurchaseItem[]
@@ -265,23 +297,25 @@ model Quotation {
   createdAt   DateTime        @default(now())
   completedAt DateTime?
 
-  purchase    Purchase?       @relation(fields: [purchaseId], references: [id])
-  createdBy   User            @relation(fields: [createdById], references: [id])
-  items       QuotationItem[]
+  purchase  Purchase?       @relation(fields: [purchaseId], references: [id])
+  createdBy User            @relation(fields: [createdById], references: [id])
+  items     QuotationItem[]
 }
 
 model QuotationItem {
-  id               String   @id @default(uuid())
-  quotationId      String
-  presentationId   String
-  pharmacyId       String
-  pricePerPackage  Decimal? @db.Decimal(10, 2)
-  kitPrice         Decimal? @db.Decimal(10, 2)
-  kitQuantity      Int?
-  shippingEstimate Decimal? @db.Decimal(10, 2)
-  inStock          Boolean?
+  id                 String   @id @default(uuid())
+  quotationId        String
+  presentationId     String
+  pharmacyId         String
+  pricePerPackage    Decimal? @db.Decimal(10, 2)
+  kitPrice           Decimal? @db.Decimal(10, 2)
+  kitQuantity        Int?
+  shippingEstimate   Decimal? @db.Decimal(10, 2)
+  inStock            Boolean?
   searchTermOverride String?
-  notes            String?
+  notes              String?
+  // Total pago por quantidade quando há promoção, ex: {"2": 27.88, "3": 46.47}
+  quantityTotals     Json?
 
   quotation    Quotation              @relation(fields: [quotationId], references: [id], onDelete: Cascade)
   presentation MedicationPresentation @relation(fields: [presentationId], references: [id])

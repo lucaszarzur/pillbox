@@ -8,7 +8,8 @@ import bcrypt from "bcryptjs"
 export async function getSettingsData() {
   const pharmacies = await prisma.pharmacy.findMany({ orderBy: { priority: "asc" } })
   const users = await prisma.user.findMany({ select: { id: true, name: true, email: true, role: true } })
-  return JSON.parse(JSON.stringify({ pharmacies, users }))
+  const postalCode = (await prisma.appSetting.findUnique({ where: { key: "postalCode" } }))?.value ?? ""
+  return JSON.parse(JSON.stringify({ pharmacies, users, postalCode }))
 }
 
 export async function changePassword(currentPassword: string, newPassword: string) {
@@ -51,9 +52,33 @@ export async function updateMomName(name: string) {
   revalidatePath("/manager/settings")
 }
 
-export async function updatePharmacy(id: string, data: { name: string; searchUrlTemplate: string; priority: number; isActive: boolean }) {
-  await prisma.pharmacy.update({ where: { id }, data })
+export async function updatePharmacy(id: string, data: {
+  name: string
+  searchUrlTemplate: string
+  priority: number
+  isActive: boolean
+  shippingCost: number | null
+  freeShippingMin: number | null
+  deliveryDays: number | null
+  pickupAvailable: boolean
+  pickupNotes: string | null
+  vtexHost: string | null
+}) {
+  const session = await auth()
+  if (session?.user?.role !== "MANAGER") throw new Error("Unauthorized")
+  const vtexHost = data.vtexHost?.trim().replace(/^https?:\/\//, "").replace(/\/.*$/, "") || null
+  await prisma.pharmacy.update({ where: { id }, data: { ...data, vtexHost, pickupNotes: data.pickupNotes?.trim() || null } })
   revalidatePath("/manager/settings")
   revalidatePath("/manager/quotation")
   revalidatePath("/manager/purchases")
+}
+
+export async function updatePostalCode(postalCode: string) {
+  const session = await auth()
+  if (session?.user?.role !== "MANAGER") throw new Error("Unauthorized")
+  const digits = postalCode.replace(/\D/g, "")
+  if (digits.length !== 8) throw new Error("CEP deve ter 8 dígitos")
+  await prisma.appSetting.upsert({ where: { key: "postalCode" }, update: { value: digits }, create: { key: "postalCode", value: digits } })
+  revalidatePath("/manager/settings")
+  revalidatePath("/manager/quotation")
 }
